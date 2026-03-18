@@ -1,0 +1,634 @@
+/* Active and historical runs use the same tinted surfaces as transcript cards. */
+.session-info-content:has(> .run-history) {
+  overflow: hidden;
+}
+
+.run-history {
+  /* Status colors are independent of the theme accent, which is not always blue. */
+  --run-status-running: light-dark(#1752a0, #9fc6ff);
+  --run-status-success: light-dark(#17633b, #96ddb0);
+  --run-status-error: light-dark(#a92732, #ffadb3);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.run-history-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+/* Execution Status (Goal & Compaction) */
+.run-history-status-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 2%, transparent);
+}
+
+.run-history-status-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: var(--ui-radius-md, 7px);
+  background: color-mix(in srgb, var(--text) 4%, var(--bg-panel));
+  border: 1px solid var(--border);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.run-history-status-card[data-status='running'],
+.run-history-status-card[data-status='active'] {
+  border-color: color-mix(in srgb, var(--run-status-running) 40%, transparent);
+  background: color-mix(in srgb, var(--run-status-running) 8%, var(--bg-panel));
+}
+
+.run-history-status-card[data-status='paused'] {
+  border-color: color-mix(in srgb, #f59e0b 40%, transparent);
+  background: color-mix(in srgb, #f59e0b 8%, var(--bg-panel));
+}
+
+.run-history-status-card[data-status='success'],
+.run-history-status-card[data-status='done'],
+.run-history-status-card[data-status='completed'] {
+  border-color: color-mix(in srgb, var(--run-status-success) 40%, transparent);
+  background: color-mix(in srgb, var(--run-status-success) 8%, var(--bg-panel));
+}
+
+.run-history-status-card[data-status='error'] {
+  border-color: color-mix(in srgb, var(--run-status-error) 40%, transparent);
+  background: color-mix(in srgb, var(--run-status-error) 8%, var(--bg-panel));
+}
+
+.run-history-status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.run-history-status-title-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.run-history-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 7px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text-muted);
+}
+
+.run-history-status-badge[data-status='running'],
+.run-history-status-badge[data-status='active'] {
+  background: color-mix(in srgb, var(--run-status-running) 18%, transparent);
+  color: var(--run-status-running);
+}
+
+.run-history-status-badge[data-status='paused'] {
+  background: color-mix(in srgb, #f59e0b 18%, transparent);
+  color: #d97706;
+}
+
+.run-history-status-badge[data-status='success'],
+.run-history-status-badge[data-status='done'],
+.run-history-status-badge[data-status='completed'] {
+  background: color-mix(in srgb, var(--run-status-success) 18%, transparent);
+  color: var(--run-status-success);
+}
+
+.run-history-status-badge[data-status='error'] {
+  background: color-mix(in srgb, var(--run-status-error) 18%, transparent);
+  color: var(--run-status-error);
+}
+
+.run-history-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+@keyframes run-history-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
+}
+
+.run-history-status-badge[data-status='running'] .run-history-status-dot,
+.run-history-status-badge[data-status='active'] .run-history-status-dot {
+  animation: run-history-dot-pulse 1.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-history-status-badge[data-status='running'] .run-history-status-dot,
+  .run-history-status-badge[data-status='active'] .run-history-status-dot {
+    animation: none;
+  }
+
+  .run-history-past {
+    transition: none;
+  }
+}
+
+.run-history-status-title {
+  font-weight: 600;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.run-history-status-tokens {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.run-history-status-objective {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 4.5em;
+  overflow-y: auto;
+}
+
+.run-history-status-error {
+  color: var(--run-status-error);
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+/* The two lists share the panel: the history keeps the height the user drags
+   its top edge to (--runs-history-height), the active list takes the rest, and
+   a closed history is only its header row. */
+.run-history-active {
+  flex: 0 1 auto;
+  border-bottom: 1px solid var(--border);
+}
+.run-history-past {
+  flex: 1 1 44px;
+  overflow: hidden;
+  transition: flex-basis 240ms ease;
+}
+.run-history[data-history-open='true'] .run-history-active {
+  flex: 1 1 auto;
+  max-height: none;
+}
+.run-history[data-history-open='true'] .run-history-past {
+  flex: 0 1 var(--runs-history-height, 45%);
+}
+.run-history[data-history-open='false'] .run-history-active {
+  flex-grow: 1;
+  max-height: calc(100% - 44px);
+}
+.run-history[data-history-open='false'] .run-history-past {
+  flex: 0 1 44px;
+}
+/* A drag follows the pointer instead of easing towards it. */
+.run-history.is-resizing .run-history-past {
+  transition: none;
+}
+
+/* The history's top edge: the sidebar's handle turned on its side, so hover,
+   focus and a drag look the same. */
+.panel-resize-handle.run-history-resize-handle {
+  width: auto;
+  height: 12px;
+  margin: -6px 0;
+  flex: 0 0 12px;
+  cursor: row-resize;
+}
+.panel-resize-handle.run-history-resize-handle::after {
+  top: 5px;
+  right: 0;
+  bottom: auto;
+  left: 0;
+  width: auto;
+  height: 2px;
+}
+.run-history-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0;
+  padding: 14px 14px 8px;
+  color: var(--text-muted);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+  font-weight: 600;
+}
+.run-history-past-title {
+  display: block;
+  flex: none;
+  padding: 0;
+}
+.run-history-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.run-history-toggle:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.run-history-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.run-history-toggle-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.run-history-past-content {
+  opacity: 1;
+  transition: opacity 160ms ease;
+}
+.run-history[data-history-open='false'] .run-history-past-content {
+  opacity: 0;
+}
+.run-history-count {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+  font-variant-numeric: tabular-nums;
+}
+.run-history-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 0 12px 12px;
+}
+.run-history-placeholder {
+  margin: 0;
+  padding: 8px 2px 12px;
+  color: var(--text-dim);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+@keyframes run-history-cursor {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
+.run-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.run-history-slot {
+  min-width: 0;
+}
+
+.run-history-entry {
+  --tool-card-surface: color-mix(in srgb, var(--text) 5%, var(--bg-panel));
+  --run-state-color: var(--text-muted);
+  min-width: 0;
+  overflow: hidden;
+  border-radius: var(--ui-radius-md, 7px);
+}
+
+.run-history-entry[data-status='running'],
+.run-history-entry[data-status='success'],
+.run-history-entry[data-status='error'] {
+  background: color-mix(in srgb, var(--run-state-color) 10%, var(--bg-panel));
+  box-shadow: inset 3px 0 var(--run-state-color);
+}
+.run-history-entry[data-status='running'] {
+  --run-state-color: var(--run-status-running);
+}
+.run-history-entry[data-status='success'] {
+  --run-state-color: var(--run-status-success);
+}
+.run-history-entry[data-status='error'] {
+  --run-state-color: var(--run-status-error);
+}
+
+/* Nested codemode calls use their own result, not the enclosing run's state. */
+.run-history .codemode-call[data-status='running'],
+.run-history .codemode-call[data-status='ok'],
+.run-history .codemode-call[data-status='error'] {
+  --codemode-call-surface: color-mix(in srgb, var(--call-state-color) 9%, var(--bg-panel));
+  box-shadow: inset 2px 0 var(--call-state-color);
+}
+.run-history .codemode-call[data-status='running'] {
+  --call-state-color: var(--run-status-running);
+}
+.run-history .codemode-call[data-status='ok'] {
+  --call-state-color: var(--run-status-success);
+}
+.run-history .codemode-call[data-status='error'] {
+  --call-state-color: var(--run-status-error);
+}
+
+.run-history-entry-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  width: 100%;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  transition: background-color 120ms ease;
+}
+
+.run-history-entry-header:hover {
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+}
+.run-history-entry-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.run-history-mark {
+  flex: 0 0 15px;
+  width: 15px;
+  padding-top: 1px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+  line-height: 1.45;
+  text-align: center;
+}
+.run-history-mark[data-status='running'] {
+  animation: run-history-cursor 1.1s steps(2, jump-none) infinite;
+}
+.run-history-mark[data-status='running'],
+.run-history-mark[data-status='success'],
+.run-history-mark[data-status='error'] {
+  color: var(--run-state-color);
+}
+
+.run-history-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.run-history-title-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.run-history-tool {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.run-history-tag {
+  flex-shrink: 0;
+  padding: 0 5px;
+  border: 1px solid color-mix(in srgb, var(--border) 80%, transparent);
+  border-radius: 999px;
+  color: var(--text-dim);
+  font-size: calc(9px + var(--ui-font-size-offset, 0px));
+  line-height: 1.55;
+}
+
+.run-history-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  margin-left: auto;
+  flex-shrink: 0;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.run-history-entry[data-active='true'] .run-history-status {
+  animation: tool-status-in 160ms ease-out;
+}
+.run-history-status[data-status='running'],
+.run-history-status[data-status='success'],
+.run-history-status[data-status='error'] {
+  color: var(--run-state-color);
+}
+
+.run-history-chevron {
+  flex-shrink: 0;
+  align-self: center;
+  color: var(--text-dim);
+  transition: transform 150ms ease;
+}
+.run-history-chevron[data-open='true'] {
+  transform: rotate(180deg);
+}
+
+.run-history-preview {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-history-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 12px 12px;
+}
+
+/* A write's or an edit's change: the same rows a transcript card draws. */
+.run-history-diff {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.run-history-label {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+}
+
+.run-history-command,
+.run-history-output {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: var(--tool-card-pane);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size, 15px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.run-history-output {
+  color: var(--text);
+}
+.run-history-output[data-error='true'] {
+  color: var(--run-status-error);
+}
+
+.run-history-output-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.run-history-waiting {
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+.run-history-text-button {
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+}
+.run-history-text-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.run-history-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+}
+
+.run-history-text-link {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+  text-decoration: none;
+}
+.run-history-text-link:hover {
+  text-decoration: underline;
+}
+.run-history-text-link:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.run-history-note-error {
+  color: var(--run-status-error);
+}
+
+.run-history-text-button:disabled {
+  color: var(--text-dim);
+  cursor: default;
+}
+
+.run-history-script {
+  min-width: 0;
+}
+.run-history-script summary {
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: calc(10px + var(--ui-font-size-offset, 0px));
+  padding: 2px 0;
+}
+.run-history-script summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.run-history-script pre {
+  margin: 4px 0 0;
+  max-height: 320px;
+  overflow: auto;
+  padding: 9px 10px;
+  border-radius: 6px;
+  background: var(--tool-card-pane);
+  font-family: var(--font-mono);
+  font-size: var(--font-mono-size, 15px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .run-history-mark[data-status='running'],
+  .run-history-entry[data-active='true'] .run-history-status {
+    animation: none;
+  }
+  .run-history-entry-header,
+  .run-history-chevron,
+  .run-history-active,
+  .run-history-past,
+  .run-history-past-content {
+    transition: none;
+  }
+}
+
+@media (pointer: coarse) {
+  .run-history-entry-header {
+    min-height: 44px;
+  }
+  .run-history-text-button {
+    min-height: 44px;
+  }
+}

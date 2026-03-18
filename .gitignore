@@ -1,0 +1,15 @@
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local logs and environment files
+*.log
+.env*
+
+# Project build output is ignored by webui/.gitignore and tui/.gitignore.
+
+# Agent tooling
+/.agents/
+/skills-lock.json

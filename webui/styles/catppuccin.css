@@ -1,0 +1,83 @@
+/* official Catppuccin palettes (https://catppuccin.com/palette/).
+   Mauve accent (Latte slightly deepened for AA); base/mantle surfaces.
+   Keep html specificity above html.dark,
+   and data-theme selectors so Settings previews work in any active theme. */
+html[data-theme='catppuccin-latte'],
+[data-theme='catppuccin-latte'] {
+  color-scheme: light;
+  --bg: #eff1f5;
+  --bg-panel: #e6e9ef;
+  --bg-hover: #dce0e8;
+  --bg-selected: #ccd0da;
+  --border: #9ca0b0;
+  --text: #4c4f69;
+  --text-muted: #5c5f77;
+  --text-dim: #5c5f77;
+  --accent: #7c2de0;
+  --accent-hover: #6c21c6;
+  --accent-contrast: #eff1f5;
+  --user-bg: #e6e9ef;
+  --assistant-bg: #eff1f5;
+  --tool-bg: #e6e9ef;
+  --bg-subtle: rgba(76, 79, 105, 0.04);
+}
+
+html[data-theme='catppuccin-frappe'],
+[data-theme='catppuccin-frappe'] {
+  color-scheme: dark;
+  --bg: #303446;
+  --bg-panel: #292c3c;
+  --bg-hover: #414559;
+  --bg-selected: #51576d;
+  --border: #626880;
+  --text: #c6d0f5;
+  --text-muted: #b5bfe2;
+  --text-dim: #a5adce;
+  --accent: #ca9ee6;
+  --accent-hover: #babbf1;
+  --accent-contrast: #303446;
+  --user-bg: #292c3c;
+  --assistant-bg: #303446;
+  --tool-bg: #292c3c;
+  --bg-subtle: rgba(198, 208, 245, 0.04);
+}
+
+html[data-theme='catppuccin-macchiato'],
+[data-theme='catppuccin-macchiato'] {
+  color-scheme: dark;
+  --bg: #24273a;
+  --bg-panel: #1e2030;
+  --bg-hover: #363a4f;
+  --bg-selected: #494d64;
+  --border: #5b6078;
+  --text: #cad3f5;
+  --text-muted: #b8c0e0;
+  --text-dim: #a5adcb;
+  --accent: #c6a0f6;
+  --accent-hover: #b7bdf8;
+  --accent-contrast: #24273a;
+  --user-bg: #363a4f;
+  --assistant-bg: #24273a;
+  --tool-bg: #1e2030;
+  --bg-subtle: rgba(202, 211, 245, 0.04);
+}
+
+html[data-theme='catppuccin-mocha'],
+[data-theme='catppuccin-mocha'] {
+  color-scheme: dark;
+  --bg: #1e1e2e;
+  --bg-panel: #181825;
+  --bg-hover: #313244;
+  --bg-selected: #45475a;
+  --border: #585b70;
+  --text: #cdd6f4;
+  --text-muted: #bac2de;
+  --text-dim: #a6adc8;
+  --accent: #cba6f7;
+  --accent-hover: #b4befe;
+  --accent-contrast: #1e1e2e;
+  --user-bg: #313244;
+  --assistant-bg: #1e1e2e;
+  --tool-bg: #181825;
+  --bg-subtle: rgba(205, 214, 244, 0.04);
+}

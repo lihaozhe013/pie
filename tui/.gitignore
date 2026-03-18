@@ -1,0 +1,14 @@
+# Build artifacts
+/bin/
+/dist/
+*.test
+coverage.out
+
+# Editor and OS noise
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local debugging output
+*.log

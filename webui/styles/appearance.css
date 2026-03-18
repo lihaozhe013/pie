@@ -1,0 +1,313 @@
+/* Settings navigation, discoverability and the appearance editor. */
+.settings-dialog-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.settings-dialog-main {
+  min-width: 0;
+}
+.settings-section-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.settings-search {
+  position: relative;
+  flex-shrink: 0;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+}
+.settings-search > input {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font: inherit;
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+.settings-search-results {
+  position: absolute;
+  z-index: 2;
+  top: calc(100% - 4px);
+  left: 18px;
+  right: 18px;
+  max-height: min(420px, 50dvh);
+  overflow-y: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px color-mix(in srgb, var(--text) 15%, transparent);
+}
+.settings-search-status {
+  margin: 6px 10px;
+  color: var(--text-muted);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+.settings-search-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.settings-search-result small {
+  color: var(--text-muted);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+  line-height: 1.5;
+}
+.settings-search-result:disabled {
+  cursor: default;
+  opacity: 0.65;
+}
+.settings-search-result:not(:disabled):hover {
+  background: var(--bg-hover);
+}
+.settings-search-highlight {
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+  border-radius: 5px;
+}
+.appearance-page-heading h2 {
+  margin: 0 0 8px;
+  font-size: calc(22px + var(--ui-font-size-offset, 0px));
+  font-weight: 600;
+}
+.settings-appearance > * {
+  max-width: 640px;
+}
+.appearance-section-heading,
+.appearance-range-heading,
+.appearance-weight {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.appearance-section-heading label {
+  font-weight: 600;
+}
+.appearance-section-heading .settings-general-heading {
+  margin: 0;
+}
+.appearance-theme-picker > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border-radius: 6px;
+  background: var(--bg-panel);
+  list-style: none;
+  cursor: pointer;
+}
+.appearance-theme-picker > summary::-webkit-details-marker {
+  display: none;
+}
+.appearance-theme-picker > summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.appearance-theme-picker[open] > summary {
+  margin-bottom: 14px;
+}
+.appearance-current-theme {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-muted);
+}
+.appearance-fonts {
+  display: grid;
+  gap: 22px;
+}
+.appearance-font-group {
+  padding: 16px;
+  background: var(--bg-panel);
+  border-radius: 8px;
+}
+.appearance-font-group .settings-font-input {
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-weight: var(--font-ui-weight);
+  font-size: calc(14px + var(--ui-font-size-offset, 0px));
+}
+.appearance-font-group .settings-font-input.is-mono {
+  font-family: var(--font-mono);
+  font-weight: var(--font-mono-weight);
+  font-size: var(--font-mono-size);
+}
+.appearance-weight {
+  margin-top: 14px;
+}
+.appearance-weight select {
+  max-width: 100%;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.appearance-range {
+  margin-top: 18px;
+}
+.appearance-range-heading > label {
+  flex: 1;
+  min-width: 120px;
+}
+.appearance-number {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-muted);
+}
+.appearance-number input {
+  width: 5.5em;
+  min-height: 34px;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.appearance-range > input[type='range'] {
+  width: 100%;
+  min-height: 28px;
+  accent-color: var(--accent);
+}
+.appearance-preview {
+  margin-top: 12px;
+  padding: 20px;
+  border-radius: 8px;
+  background: var(--bg-panel);
+  overflow-wrap: anywhere;
+}
+.appearance-preview-ui {
+  margin-bottom: 14px;
+  color: var(--text-muted);
+}
+.appearance-preview .tool-card {
+  padding: 12px;
+  margin-top: 16px;
+  border-radius: 6px;
+}
+.appearance-preview-output {
+  margin: 4px 0 0;
+  white-space: pre-wrap;
+  font-size: var(--font-mono-size);
+  line-height: 1.6;
+}
+.settings-search input:focus-visible,
+.settings-search-result:focus-visible,
+.settings-appearance :is(input, select):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.settings-appearance .settings-theme-options {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 125px), 1fr));
+  grid-auto-rows: minmax(48px, auto);
+  max-width: none;
+}
+.settings-appearance .settings-theme-option,
+.settings-appearance .settings-theme-option[data-wide] {
+  grid-column: span 1;
+}
+.settings-appearance .settings-theme-option[data-system] {
+  grid-column: 1 / -1;
+}
+.settings-appearance .settings-theme-name {
+  position: static;
+  min-height: 48px;
+  padding: 10px 14px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.4;
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+.settings-appearance .settings-theme-option:has(input:checked)::after {
+  content: '✓';
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font: 600 12px/1 var(--font-ui);
+}
+/* Fixed heights must not clip the larger UI type scale. */
+.settings-appearance .config-button {
+  height: auto;
+  min-height: 32px;
+  padding-block: 6px;
+}
+.settings-general-heading {
+  line-height: 1.5;
+}
+.settings-general-description {
+  line-height: 1.6;
+}
+@media (max-width: 640px) {
+  .settings-dialog-body > .settings-section-tabs {
+    display: none;
+  }
+  .settings-search {
+    padding-inline: 12px;
+  }
+  .settings-search-results {
+    left: 12px;
+    right: 12px;
+  }
+  .settings-appearance {
+    padding: 22px 18px 36px;
+  }
+  .appearance-font-group {
+    padding: 12px;
+  }
+  .appearance-preview {
+    padding: 12px;
+  }
+  .appearance-range-heading {
+    gap: 8px;
+  }
+  .settings-search > input,
+  .settings-dialog-surface input:not([type='range']):not([type='radio']):not([type='checkbox']),
+  .settings-dialog-surface select {
+    font-size: max(16px, var(--font-ui-size)) !important;
+    min-height: 38px;
+  }
+}
+@media (pointer: coarse) {
+  .settings-appearance .config-button,
+  .settings-appearance select,
+  .settings-appearance input:not([type='range']),
+  .settings-section-tab {
+    min-height: 44px;
+  }
+}

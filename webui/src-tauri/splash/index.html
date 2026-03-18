@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Pie</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f7f7f8;
+        --panel: #ffffff;
+        --text: #1b1b1f;
+        --muted: #6b6b73;
+        --border: #e4e4e7;
+        --accent: #2f6f4f;
+        --danger: #a13a2a;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #131315;
+          --panel: #1b1b1e;
+          --text: #f2f2f3;
+          --muted: #9a9aa2;
+          --border: #2a2a2f;
+          --accent: #8ec9a8;
+          --danger: #e08b78;
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        background: var(--bg);
+        color: var(--text);
+        font:
+          14px/1.6 ui-sans-serif,
+          system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+        padding: 32px;
+      }
+
+      main {
+        width: min(520px, 100%);
+        padding: 28px 30px;
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        background: var(--panel);
+      }
+
+      h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+      }
+
+      .mark {
+        width: 28px;
+        height: 28px;
+        margin-bottom: 18px;
+        border: 2px solid var(--accent);
+        border-radius: 50%;
+        border-top-color: transparent;
+        animation: spin 1.1s linear infinite;
+      }
+
+      body[data-state='error'] .mark {
+        animation: none;
+        border-color: var(--danger);
+      }
+
+      #status {
+        margin: 0;
+        white-space: pre-wrap;
+        color: var(--muted);
+      }
+
+      body[data-state='error'] #status {
+        color: var(--text);
+      }
+
+      .hint {
+        margin: 14px 0 0;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+        color: var(--muted);
+        font-size: 12.5px;
+      }
+
+      .hint[hidden] {
+        display: none;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .mark {
+          animation: none;
+          border-top-color: var(--accent);
+        }
+      }
+    </style>
+  </head>
+  <body data-state="busy">
+    <main>
+      <div class="mark" aria-hidden="true"></div>
+      <h1>Pie</h1>
+      <p id="status" role="status">Starting the local server…</p>
+      <p class="hint" id="hint">
+        The first launch unpacks the server payload. Sessions and Pi configuration stay outside this
+        app.
+      </p>
+    </main>
+    <script>
+      window.__pie = {
+        status(text, error) {
+          document.getElementById('status').textContent = text;
+          document.getElementById('hint').hidden = Boolean(error);
+          document.body.dataset.state = error ? 'error' : 'busy';
+        }
+      };
+    </script>
+  </body>
+</html>

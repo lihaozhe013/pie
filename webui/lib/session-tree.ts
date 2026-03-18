@@ -1,0 +1,1195 @@
+/** Flat sidebar rows for individual sessions, with project grouping, pins, and archives. */
+import {
+  storedProjectName,
+  type ProjectMovePosition,
+  type SessionUiSessionState,
+  type SessionUiState
+} from './session-ui-state-shared';
+import type { SessionInfo } from './types';
+import { workspaceKeyOf } from './workspace-memory';
+
+export type SidebarLayout = 'desktop' | 'mobile';
+export type SidebarRowKind =
+  | 'pinned-header'
+  | 'session'
+  | 'pinned-more'
+  | 'group'
+  | 'group-more'
+  | 'group-empty'
+  | 'spacer'
+  | 'archive-group';
+
+/**
+ * Per-kind row heights: one rhythm. Session rows, the section headers (a
+ * project's, the pinned section's, the archive's projects) and the empty
+ * group's note are one height, 28px (44px on a phone, a finger's minimum for
+ * the rows); only "show more" is a step shorter. A spacer parts the pinned
+ * section from the groups; groups themselves sit right on each other, with
+ * none between them.
+ */
+export const SIDEBAR_ROW_HEIGHTS: Record<SidebarLayout, Record<SidebarRowKind, number>> = {
+  desktop: {
+    'pinned-header': 28,
+    session: 28,
+    'pinned-more': 26,
+    group: 28,
+    'group-more': 26,
+    'group-empty': 28,
+    spacer: 8,
+    'archive-group': 28
+  },
+  mobile: {
+    'pinned-header': 44,
+    session: 44,
+    'pinned-more': 36,
+    group: 44,
+    'group-more': 36,
+    'group-empty': 44,
+    spacer: 8,
+    'archive-group': 44
+  }
+};
+export const GROUP_VISIBLE_LIMIT = 6;
+export const PINNED_VISIBLE_LIMIT = 8;
+/** How many more conversations each "show more" click reveals. */
+export const SHOW_MORE_STEP = 20;
+/** `moreShown` entry for the pinned section's "show more". */
+export const PINNED_MORE_KEY = 'pinned';
+
+/**
+ * `name` is what the sidebar shows: the user's display name for the project
+ * (`customName`, from its group menu's Rename…), else its folder's name.
+ */
+export interface SidebarProject {
+  key: string;
+  root: string;
+  name: string;
+  customName: string | null;
+  pinned: boolean;
+  current: boolean;
+}
+export interface SidebarSessionStatus {
+  running: boolean;
+  awaiting: boolean;
+  unread: boolean;
+  selected: boolean;
+  transient: boolean;
+}
+
+export type SidebarRow =
+  | {
+      kind: 'pinned-header';
+      key: 'pinned-header';
+      count: number;
+      collapsed: boolean;
+      running: number;
+      unread: number;
+    }
+  | {
+      kind: 'session';
+      key: string;
+      conversation: SessionInfo;
+      context: 'pinned' | 'group' | 'archive';
+      project: SidebarProject;
+      status: SidebarSessionStatus;
+      archivedAt: number | null;
+    }
+  | {
+      kind: 'pinned-more';
+      key: 'pinned-more';
+      hidden: number;
+      canShowLess: boolean;
+      nextShown: number;
+    }
+  | {
+      kind: 'group';
+      key: string;
+      project: SidebarProject;
+      expanded: boolean;
+      running: number;
+      unread: number;
+    }
+  | {
+      kind: 'group-more';
+      key: string;
+      projectKey: string;
+      hidden: number;
+      canShowLess: boolean;
+      nextShown: number;
+    }
+  | { kind: 'group-empty'; key: string; project: SidebarProject }
+  | { kind: 'spacer'; key: 'pinned-spacer' }
+  | {
+      kind: 'archive-group';
+      key: string;
+      project: SidebarProject;
+      count: number;
+      expanded: boolean;
+    };
+
+export interface SessionTreeInput {
+  sessions: readonly SessionInfo[];
+  uiState: SessionUiState;
+  runningIds: ReadonlySet<string>;
+  /** Members parked on an extension's blocking dialog, a subset of runningIds (/api/agent/running). */
+  awaitingIds?: ReadonlySet<string>;
+  unreadIds: ReadonlySet<string>;
+  selectedSessionId: string | null;
+  /** projectFor(selectedCwd); shown as a group even without sessions. */
+  currentProject: { key: string; root: string } | null;
+  /**
+   * Explicit user choices (from prefs) over the groups kept open for the
+   * page (effectiveGroupExpansion); see isGroupExpanded.
+   */
+  groupExpansion: Readonly<Record<string, boolean>>;
+  /** Conversations revealed beyond the base limit by "show more", per projectKey or PINNED_MORE_KEY. */
+  moreShown: Readonly<Record<string, number>>;
+  pinnedCollapsed: boolean;
+}
+
+export interface SessionTreeModel {
+  rows: SidebarRow[];
+  /** Projects in group order. */
+  projects: SidebarProject[];
+  /** Archived conversations across all projects. */
+  archivedCount: number;
+  /**
+   * Shown projects without a place in `projectOrder`, per band, top to
+   * bottom: a move saves its band's ones first, so it lands where it was seen.
+   */
+  unorderedKeysByBand: { pinned: string[]; other: string[] };
+  /**
+   * Of those, the ones the sidebar saves on its own, top to bottom: pinned
+   * projects, and projects with a saved (not transient) live conversation. Not the
+   * current project while it has none, nor a project of transient sessions
+   * only: either may never get a file.
+   */
+  projectKeysToRecord: string[];
+}
+
+type SessionFlagsInput = Pick<
+  SessionTreeInput,
+  'uiState' | 'runningIds' | 'awaitingIds' | 'unreadIds' | 'selectedSessionId'
+>;
+
+function conversationEntry(
+  state: SessionUiState,
+  rootId: string
+): SessionUiSessionState | undefined {
+  // Session ids such as "constructor" must not resolve to Object.prototype members.
+  return Object.hasOwn(state.sessions, rootId) ? state.sessions[rootId] : undefined;
+}
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+/** Time value for ordering: newest first, unparsable dates last. */
+function timeOf(value: string): number {
+  const time = Date.parse(value);
+  return Number.isNaN(time) ? -Infinity : time;
+}
+
+/** Descending comparison that is safe for ±Infinity (a - b would give NaN). */
+function compareDesc(a: number, b: number): number {
+  return a === b ? 0 : a > b ? -1 : 1;
+}
+
+/**
+ * archivedAt set AND no conversation member running AND (root.detailsPending OR
+ * archivedAt >= Date.parse(root.modified)). A summary row (detailsPending)
+ * carries only stat metadata, so its time is not trusted to un-archive; an
+ * unparsable root.modified likewise keeps the conversation archived.
+ */
+export function isConversationArchived(
+  conversation: SessionInfo,
+  state: SessionUiState,
+  runningIds: ReadonlySet<string>
+): boolean {
+  const archivedAt = finiteNumber(conversationEntry(state, conversation.id)?.archivedAt);
+  if (archivedAt === null) return false;
+  if (runningIds.has(conversation.id)) return false;
+  if (conversation.detailsPending) return true;
+  const modified = Date.parse(conversation.modified);
+  return Number.isNaN(modified) || archivedAt >= modified;
+}
+
+/** pinnedAt set AND not isConversationArchived. */
+export function isConversationPinned(
+  conversation: SessionInfo,
+  state: SessionUiState,
+  runningIds: ReadonlySet<string>
+): boolean {
+  return (
+    finiteNumber(conversationEntry(state, conversation.id)?.pinnedAt) !== null &&
+    !isConversationArchived(conversation, state, runningIds)
+  );
+}
+
+/** Last path segment of a project root, for "/" and "\\" paths alike. */
+export function projectNameOf(root: string): string {
+  const trimmed = root.replace(/[\\/]+$/, '');
+  // "/" (or "\\", "//") is a filesystem root: show it as is.
+  if (!trimmed) return root.charAt(0);
+  const separator = Math.max(trimmed.lastIndexOf('/'), trimmed.lastIndexOf('\\'));
+  return trimmed.slice(separator + 1);
+}
+
+/** Explicit choice wins; by default the current and pinned projects are open. */
+export function isGroupExpanded(
+  project: SidebarProject,
+  groupExpansion: Readonly<Record<string, boolean>>
+): boolean {
+  if (Object.hasOwn(groupExpansion, project.key)) {
+    const choice = groupExpansion[project.key];
+    if (typeof choice === 'boolean') return choice;
+  }
+  return project.current || project.pinned;
+}
+
+/**
+ * The groups kept open for the page once `outgoing`, the project that was
+ * current, no longer is (`outgoing` as the new model has it). A group open
+ * only by the "current" default would fold up at once: picking a session in
+ * another group would move every row below it, the clicked one included,
+ * from under the pointer. It stays open for the page's life instead, never
+ * as a saved choice: saved, every project ever visited would come back open
+ * after a reload. Returns `keptOpen` itself when nothing changes: an explicit
+ * choice in `groupExpansion` (the saved ones), a group already kept open, a
+ * pinned project (open by default anyway), a project still current, or one
+ * without a group any more.
+ */
+export function keepOutgoingGroupOpen(
+  keptOpen: ReadonlySet<string>,
+  groupExpansion: Readonly<Record<string, boolean>>,
+  outgoing: SidebarProject | undefined
+): ReadonlySet<string> {
+  if (!outgoing || outgoing.current || outgoing.pinned) return keptOpen;
+  if (keptOpen.has(outgoing.key) || Object.hasOwn(groupExpansion, outgoing.key)) return keptOpen;
+  return new Set(keptOpen).add(outgoing.key);
+}
+
+/**
+ * What the tree shows and every toggle reads: the saved choices over the
+ * groups kept open for the page (keepOutgoingGroupOpen). Returns
+ * `groupExpansion` itself while none is kept open. Never saved: only
+ * explicit choices are.
+ */
+export function effectiveGroupExpansion(
+  groupExpansion: Readonly<Record<string, boolean>>,
+  keptOpen: ReadonlySet<string>
+): Readonly<Record<string, boolean>> {
+  if (keptOpen.size === 0) return groupExpansion;
+  // fromEntries defines own properties, so no key can reach the prototype.
+  return Object.fromEntries([
+    ...[...keptOpen]
+      .filter((key) => !Object.hasOwn(groupExpansion, key))
+      .map((key) => [key, true] as const),
+    ...Object.entries(groupExpansion)
+  ]);
+}
+
+/**
+ * `keptOpen` without the groups an explicit choice now covers (`keys`; null
+ * for a choice made for every group at once). Returns `keptOpen` itself
+ * when none of them was in it.
+ */
+export function forgetKeptOpenGroups(
+  keptOpen: ReadonlySet<string>,
+  keys: readonly string[] | null
+): ReadonlySet<string> {
+  if (keptOpen.size === 0) return keptOpen;
+  if (keys === null) return new Set();
+  if (!keys.some((key) => keptOpen.has(key))) return keptOpen;
+  const next = new Set(keptOpen);
+  for (const key of keys) next.delete(key);
+  return next;
+}
+
+function conversationStatus(
+  conversation: SessionInfo,
+  input: SessionFlagsInput
+): SidebarSessionStatus {
+  return {
+    running: input.runningIds.has(conversation.id),
+    awaiting: input.awaitingIds ? input.awaitingIds.has(conversation.id) : false,
+    unread: input.unreadIds.has(conversation.id),
+    selected: conversation.id === input.selectedSessionId,
+    transient: conversation.transient === true
+  };
+}
+
+function conversationProjectKey(conversation: SessionInfo): string {
+  return workspaceKeyOf(conversation);
+}
+
+function conversationProjectRoot(conversation: SessionInfo): string {
+  return conversation.projectRoot ?? conversation.cwd;
+}
+
+/**
+ * SidebarProject for every key that is referenced. The root path comes from
+ * the newest conversation of that key (conversations arrive newest first), then from the
+ * current project, then from the pinned-project entry.
+ */
+function createProjectResolver(
+  uiState: SessionUiState,
+  currentProject: { key: string; root: string } | null
+) {
+  const roots = new Map<string, string>();
+  const projects = new Map<string, SidebarProject>();
+
+  return {
+    noteConversation(conversation: SessionInfo) {
+      const key = conversationProjectKey(conversation);
+      if (!roots.has(key)) roots.set(key, conversationProjectRoot(conversation));
+    },
+    get(key: string): SidebarProject {
+      const cached = projects.get(key);
+      if (cached) return cached;
+      const pinnedEntry = Object.hasOwn(uiState.projects, key) ? uiState.projects[key] : undefined;
+      const current = currentProject !== null && currentProject.key === key;
+      const root =
+        roots.get(key) ?? (current ? currentProject.root : undefined) ?? pinnedEntry?.root ?? key;
+      const customName = storedProjectName(uiState, key) ?? null;
+      const project: SidebarProject = {
+        key,
+        root,
+        name: customName ?? projectNameOf(root),
+        customName,
+        pinned: pinnedEntry !== undefined,
+        current
+      };
+      projects.set(key, project);
+      return project;
+    }
+  };
+}
+
+function sessionRow(
+  conversation: SessionInfo,
+  context: 'pinned' | 'group' | 'archive',
+  project: SidebarProject,
+  input: SessionFlagsInput,
+  archivedAt: number | null
+): SidebarRow {
+  return {
+    kind: 'session',
+    key: `session:${context}:${conversation.id}`,
+    conversation,
+    context,
+    project,
+    status: conversationStatus(conversation, input),
+    archivedAt
+  };
+}
+
+/**
+ * The first `limit` conversations, the `shown` positions "show more" opened past
+ * them, and any later conversation that is running, unread or selected (sorted
+ * order kept). Positions, not a budget: a conversation that turns selected, unread
+ * or running inside the window keeps its place and frees nothing, so picking
+ * the last revealed row never brings in an older one below it. `revealed`
+ * counts the rows only the window shows (what "show less" would fold);
+ * `nextShown` is the window a "show more" click opens, decided at the click:
+ * SHOW_MORE_STEP more hidden conversations past this one (those that show anyway
+ * do not use up the click), or all that are left, and a long project never
+ * mounts all of its rows at once.
+ */
+function visibleConversations(
+  conversations: readonly SessionInfo[],
+  limit: number,
+  shown: number,
+  input: SessionFlagsInput
+): { visible: SessionInfo[]; revealed: number; nextShown: number } {
+  const flagged = conversations.map((conversation, index) => {
+    if (index < limit) return false;
+    const status = conversationStatus(conversation, input);
+    return status.running || status.unread || status.selected;
+  });
+  const end = limit + shown;
+  let revealed = 0;
+  const visible = conversations.filter((_conversation, index) => {
+    if (index < limit || flagged[index]) return true;
+    if (index < end) {
+      revealed++;
+      return true;
+    }
+    return false;
+  });
+  let next = Math.max(limit, Math.min(end, conversations.length));
+  for (let hidden = 0; next < conversations.length && hidden < SHOW_MORE_STEP; next++) {
+    if (!flagged[next]) hidden++;
+  }
+  return { visible, revealed, nextShown: next - limit };
+}
+
+/** Positions "show more" has opened past the base limit for `key` (0 when none or malformed). */
+export function shownMoreFor(moreShown: Readonly<Record<string, number>>, key: string): number {
+  if (!Object.hasOwn(moreShown, key)) return 0;
+  const value = moreShown[key];
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+/** One "show more" click for `key`: the window its more row offers (`nextShown`). */
+export function showMoreConversations(
+  moreShown: Readonly<Record<string, number>>,
+  key: string,
+  nextShown: number
+): Record<string, number> {
+  return { ...moreShown, [key]: Math.max(shownMoreFor(moreShown, key), Math.floor(nextShown)) };
+}
+
+/**
+ * `moreShown` without the windows of the groups an explicit choice folds
+ * (`keys`, the groups it covers; null: every group in `choices`): a group
+ * opened again shows its first rows only, not the window it had. Returns
+ * `moreShown` itself when none of them had one.
+ */
+export function forgetShownMoreOfFolded(
+  moreShown: Readonly<Record<string, number>>,
+  choices: Readonly<Record<string, boolean>>,
+  keys: readonly string[] | null
+): Record<string, number> {
+  const folded = (keys ?? Object.keys(choices)).filter(
+    (key) => choices[key] === false && Object.hasOwn(moreShown, key)
+  );
+  if (folded.length === 0) return moreShown as Record<string, number>;
+  const next = { ...moreShown };
+  for (const key of folded) delete next[key];
+  return next;
+}
+
+/** "Show less": back to the base limit for `key`. */
+export function showLessConversations(
+  moreShown: Readonly<Record<string, number>>,
+  key: string
+): Record<string, number> {
+  if (!Object.hasOwn(moreShown, key)) return moreShown as Record<string, number>;
+  const next = { ...moreShown };
+  delete next[key];
+  return next;
+}
+
+/**
+ * The "show more" row: how many conversations are still hidden, and whether
+ * "show less" would fold anything back (only rows "show more" revealed; the
+ * running, unread or selected ones stay). Null when neither applies.
+ */
+function moreRowState(
+  total: number,
+  visible: number,
+  revealed: number
+): { hidden: number; canShowLess: boolean } | null {
+  const hidden = total - visible;
+  const canShowLess = revealed > 0;
+  return hidden > 0 || canShowLess ? { hidden, canShowLess } : null;
+}
+
+export function buildSessionTree(input: SessionTreeInput): SessionTreeModel {
+  const { uiState, runningIds, currentProject } = input;
+  const conversations = [...input.sessions].sort((a, b) => b.modified.localeCompare(a.modified));
+  const resolver = createProjectResolver(uiState, currentProject);
+
+  let archivedCount = 0;
+  const pinnedConversations: SessionInfo[] = [];
+  // Insertion order follows conversation activity (newest first).
+  const projectConversations = new Map<string, SessionInfo[]>();
+  const projectActivity = new Map<string, number>();
+  // Projects with a live conversation that has a file (pinned conversations included).
+  const savedKeys = new Set<string>();
+
+  for (const conversation of conversations) {
+    if (isConversationArchived(conversation, uiState, runningIds)) {
+      archivedCount++;
+      continue;
+    }
+    resolver.noteConversation(conversation);
+    const key = conversationProjectKey(conversation);
+    const activity = timeOf(conversation.modified);
+    projectActivity.set(key, Math.max(projectActivity.get(key) ?? -Infinity, activity));
+    if (!conversation.transient) savedKeys.add(key);
+    if (isConversationPinned(conversation, uiState, runningIds)) {
+      pinnedConversations.push(conversation);
+      continue;
+    }
+    const list = projectConversations.get(key);
+    if (list) list.push(conversation);
+    else projectConversations.set(key, [conversation]);
+  }
+
+  const rows: SidebarRow[] = [];
+
+  // Pinned section: newest pin first; ties keep conversation activity order.
+  if (pinnedConversations.length > 0) {
+    const pinnedAt = (conversation: SessionInfo) =>
+      finiteNumber(conversationEntry(uiState, conversation.id)?.pinnedAt) ?? 0;
+    const sorted = pinnedConversations
+      .map((conversation, index) => ({ conversation, index }))
+      .sort(
+        (a, b) =>
+          compareDesc(pinnedAt(a.conversation), pinnedAt(b.conversation)) || a.index - b.index
+      )
+      .map(({ conversation }) => conversation);
+    let running = 0;
+    let unread = 0;
+    for (const conversation of sorted) {
+      if (runningIds.has(conversation.id)) running++;
+      if (input.unreadIds.has(conversation.id)) unread++;
+    }
+    rows.push({
+      kind: 'pinned-header',
+      key: 'pinned-header',
+      count: sorted.length,
+      collapsed: input.pinnedCollapsed,
+      running,
+      unread
+    });
+    if (!input.pinnedCollapsed) {
+      const { visible, revealed, nextShown } = visibleConversations(
+        sorted,
+        PINNED_VISIBLE_LIMIT,
+        shownMoreFor(input.moreShown, PINNED_MORE_KEY),
+        input
+      );
+      for (const conversation of visible) {
+        rows.push(
+          sessionRow(
+            conversation,
+            'pinned',
+            resolver.get(conversationProjectKey(conversation)),
+            input,
+            null
+          )
+        );
+      }
+      const more = moreRowState(sorted.length, visible.length, revealed);
+      if (more) rows.push({ kind: 'pinned-more', key: 'pinned-more', ...more, nextShown });
+    }
+    rows.push({ kind: 'spacer', key: 'pinned-spacer' });
+  }
+
+  // Projects: live non-pinned conversations, the current project, pinned
+  // projects, and every saved key (the order holds what the sidebar has shown):
+  // a project stays a group once recorded, sessions or not, until "Delete this
+  // project" takes it out.
+  const projectKeys: string[] = [...projectConversations.keys()];
+  const seen = new Set(projectKeys);
+  const addKey = (key: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    projectKeys.push(key);
+  };
+  if (currentProject) addKey(currentProject.key);
+  for (const key of Object.keys(uiState.projects)) addKey(key);
+  for (const key of uiState.projectOrder ?? []) addKey(key);
+
+  const projects = projectKeys.map((key) => resolver.get(key));
+  // A Map: a stored key such as "constructor" must not find a prototype member.
+  const rank = new Map<string, number>();
+  (uiState.projectOrder ?? []).forEach((key, index) => {
+    if (!rank.has(key)) rank.set(key, index);
+  });
+  const recordable = (project: SidebarProject) => project.pinned || savedKeys.has(project.key);
+  // Projects without a place come first, in the fallback order, the ones that
+  // are not saved on their own (transient only, the empty current project)
+  // before the others: saving those then changes nothing on screen. Saved keys
+  // (the order) keep their place whether their groups hold sessions or not.
+  type Indexed = { project: SidebarProject; index: number };
+  const orderBand = (
+    band: Indexed[],
+    fallback: (a: Indexed, b: Indexed) => number
+  ): SidebarProject[] =>
+    [
+      ...band
+        .filter(({ project }) => !rank.has(project.key))
+        .sort(
+          (a, b) => Number(recordable(a.project)) - Number(recordable(b.project)) || fallback(a, b)
+        ),
+      ...band
+        .filter(({ project }) => rank.has(project.key))
+        .sort((a, b) => (rank.get(a.project.key) ?? 0) - (rank.get(b.project.key) ?? 0))
+    ].map(({ project }) => project);
+  const activityOf = (project: SidebarProject) =>
+    projectActivity.get(project.key) ?? (project.current ? Infinity : -Infinity);
+  const projectPinnedAt = (project: SidebarProject) =>
+    finiteNumber(uiState.projects[project.key]?.pinnedAt) ?? 0;
+  const indexed = projects.map((project, index) => ({ project, index }));
+  const pinnedProjects = orderBand(
+    indexed.filter(({ project }) => project.pinned),
+    (a, b) =>
+      compareDesc(projectPinnedAt(b.project), projectPinnedAt(a.project)) || a.index - b.index
+  );
+  const otherProjects = orderBand(
+    indexed.filter(({ project }) => !project.pinned),
+    (a, b) => compareDesc(activityOf(a.project), activityOf(b.project)) || a.index - b.index
+  );
+  const orderedProjects = [...pinnedProjects, ...otherProjects];
+  const unorderedKeys = (band: SidebarProject[]) =>
+    band.filter((project) => !rank.has(project.key)).map((project) => project.key);
+  const unorderedKeysByBand = {
+    pinned: unorderedKeys(pinnedProjects),
+    other: unorderedKeys(otherProjects)
+  };
+  const projectKeysToRecord = orderedProjects
+    .filter((project) => !rank.has(project.key) && recordable(project))
+    .map((project) => project.key);
+
+  for (const project of orderedProjects) {
+    const groupConversations = projectConversations.get(project.key) ?? [];
+    const expanded = isGroupExpanded(project, input.groupExpansion);
+    let running = 0;
+    let unread = 0;
+    for (const conversation of groupConversations) {
+      if (runningIds.has(conversation.id)) running++;
+      if (input.unreadIds.has(conversation.id)) unread++;
+    }
+    rows.push({ kind: 'group', key: `group:${project.key}`, project, expanded, running, unread });
+
+    if (expanded) {
+      if (groupConversations.length === 0) {
+        rows.push({ kind: 'group-empty', key: `empty:${project.key}`, project });
+      } else {
+        const { visible, revealed, nextShown } = visibleConversations(
+          groupConversations,
+          GROUP_VISIBLE_LIMIT,
+          shownMoreFor(input.moreShown, project.key),
+          input
+        );
+        for (const conversation of visible)
+          rows.push(sessionRow(conversation, 'group', project, input, null));
+        const more = moreRowState(groupConversations.length, visible.length, revealed);
+        if (more)
+          rows.push({
+            kind: 'group-more',
+            key: `more:${project.key}`,
+            projectKey: project.key,
+            ...more,
+            nextShown
+          });
+      }
+    }
+  }
+
+  // Groups sit right on each other, open or folded: a gap between two of
+  // them would only push the next header away. A spacer parts two things:
+  // with nothing below the pinned section, it would just hang under it.
+  if (rows.at(-1)?.kind === 'spacer') rows.pop();
+
+  return {
+    rows,
+    projects: orderedProjects,
+    archivedCount,
+    unorderedKeysByBand,
+    projectKeysToRecord
+  };
+}
+
+/**
+ * The next `projectKeysToRecord` the sidebar saves on its own, at most `limit`,
+ * taken from the bottom up. Saved keys go in front of the list and render right
+ * below the unsaved ones, so each batch lands where it already shows and the
+ * unsaved keys above it stay above it. A key sent before but still unsaved
+ * (refused, or no room left) ends the batch: a key saved above it would drop
+ * below it.
+ */
+export function nextProjectKeysToRecord(
+  toRecord: readonly string[],
+  sent: ReadonlySet<string>,
+  limit: number
+): string[] {
+  let first = toRecord.length;
+  while (first > 0 && toRecord.length - first < limit && !sent.has(toRecord[first - 1])) first--;
+  return toRecord.slice(first);
+}
+
+/**
+ * The archive view: archived conversations of every project, grouped by project.
+ * Groups by their newest archivedAt (desc), conversations by archivedAt (desc).
+ * A group is open unless its project key is in `collapsed` (the browser's
+ * own choice, lib/sidebar-prefs.ts); folded, only its header shows.
+ */
+export function buildArchiveRows(
+  input: Pick<
+    SessionTreeInput,
+    | 'sessions'
+    | 'uiState'
+    | 'runningIds'
+    | 'awaitingIds'
+    | 'unreadIds'
+    | 'selectedSessionId'
+    | 'currentProject'
+  > & { collapsed?: ReadonlySet<string> }
+): SidebarRow[] {
+  const { uiState, runningIds } = input;
+  const flags: SessionFlagsInput = input;
+  const resolver = createProjectResolver(uiState, input.currentProject);
+  const groups = new Map<
+    string,
+    { newest: number; conversations: { conversation: SessionInfo; archivedAt: number }[] }
+  >();
+
+  for (const conversation of [...input.sessions].sort((a, b) =>
+    b.modified.localeCompare(a.modified)
+  )) {
+    if (!isConversationArchived(conversation, uiState, runningIds)) continue;
+    resolver.noteConversation(conversation);
+    const archivedAt = finiteNumber(conversationEntry(uiState, conversation.id)?.archivedAt) ?? 0;
+    const key = conversationProjectKey(conversation);
+    const group = groups.get(key);
+    if (group) {
+      group.conversations.push({ conversation, archivedAt });
+      group.newest = Math.max(group.newest, archivedAt);
+    } else {
+      groups.set(key, { newest: archivedAt, conversations: [{ conversation, archivedAt }] });
+    }
+  }
+
+  const rows: SidebarRow[] = [];
+  const ordered = [...groups.entries()]
+    .map(([key, group], index) => ({ key, group, index }))
+    .sort((a, b) => compareDesc(a.group.newest, b.group.newest) || a.index - b.index);
+  for (const { key, group } of ordered) {
+    const project = resolver.get(key);
+    const expanded = !input.collapsed?.has(key);
+    rows.push({
+      kind: 'archive-group',
+      key: `archive:${key}`,
+      project,
+      count: group.conversations.length,
+      expanded
+    });
+    if (!expanded) continue;
+    const conversations = group.conversations
+      .map((entry, index) => ({ ...entry, index }))
+      .sort((a, b) => compareDesc(a.archivedAt, b.archivedAt) || a.index - b.index);
+    for (const { conversation, archivedAt } of conversations) {
+      rows.push(sessionRow(conversation, 'archive', project, flags, archivedAt));
+    }
+  }
+  return rows;
+}
+
+/**
+ * Root ids of live, non-pinned, non-running, non-unread, non-selected
+ * conversations of `projectKey` whose latestModified is older than
+ * now - olderThanMs. Transient conversations have no file and are never archived.
+ */
+export function conversationsToArchive(
+  input: Pick<
+    SessionTreeInput,
+    'sessions' | 'uiState' | 'runningIds' | 'unreadIds' | 'selectedSessionId'
+  >,
+  projectKey: string,
+  olderThanMs: number,
+  now: number
+): string[] {
+  const cutoff = now - olderThanMs;
+  const ids: string[] = [];
+  for (const conversation of [...input.sessions].sort((a, b) =>
+    b.modified.localeCompare(a.modified)
+  )) {
+    if (conversationProjectKey(conversation) !== projectKey) continue;
+    if (isConversationArchived(conversation, input.uiState, input.runningIds)) continue;
+    if (isConversationPinned(conversation, input.uiState, input.runningIds)) continue;
+    const status = conversationStatus(conversation, input);
+    if (status.running || status.unread || status.selected || status.transient) continue;
+    const modified = Date.parse(conversation.modified);
+    if (Number.isNaN(modified) || modified >= cutoff) continue;
+    ids.push(conversation.id);
+  }
+  return ids;
+}
+
+/**
+ * Root ids of the archived conversations the archive view's bulk actions take
+ * (Restore all, Delete…): every archived conversation, or those of `projectKey`,
+ * or those archived before `archivedBefore`. An archived conversation never runs
+ * (isConversationArchived) and always has a file.
+ */
+export function archivedConversationIds(
+  input: Pick<SessionTreeInput, 'sessions' | 'uiState' | 'runningIds'>,
+  filter: { projectKey?: string; archivedBefore?: number } = {}
+): string[] {
+  const ids: string[] = [];
+  for (const conversation of [...input.sessions].sort((a, b) =>
+    b.modified.localeCompare(a.modified)
+  )) {
+    if (
+      filter.projectKey !== undefined &&
+      conversationProjectKey(conversation) !== filter.projectKey
+    )
+      continue;
+    if (!isConversationArchived(conversation, input.uiState, input.runningIds)) continue;
+    if (filter.archivedBefore !== undefined) {
+      const archivedAt = finiteNumber(
+        conversationEntry(input.uiState, conversation.id)?.archivedAt
+      );
+      if (archivedAt === null || archivedAt >= filter.archivedBefore) continue;
+    }
+    ids.push(conversation.id);
+  }
+  return ids;
+}
+
+export function conversationsToDelete(
+  input: Pick<SessionTreeInput, 'sessions' | 'runningIds' | 'awaitingIds'>,
+  projectKey: string
+): { ids: string[]; running: number } {
+  const ids: string[] = [];
+  let running = 0;
+  for (const conversation of [...input.sessions].sort((a, b) =>
+    b.modified.localeCompare(a.modified)
+  )) {
+    if (conversationProjectKey(conversation) !== projectKey || conversation.transient) continue;
+    if (
+      input.runningIds.has(conversation.id) ||
+      (input.awaitingIds && input.awaitingIds.has(conversation.id))
+    ) {
+      running++;
+      continue;
+    }
+    ids.push(conversation.id);
+  }
+  return { ids, running };
+}
+
+/** Prefix sums of row heights: length rows.length + 1, offsets[0] = 0. */
+export function getRowOffsets(
+  rows: readonly SidebarRow[],
+  layout: SidebarLayout,
+  extraHeight = 0
+): number[] {
+  const heights = SIDEBAR_ROW_HEIGHTS[layout];
+  const growth = Number.isFinite(extraHeight) ? Math.max(0, Math.ceil(extraHeight)) : 0;
+  const offsets = new Array<number>(rows.length + 1);
+  offsets[0] = 0;
+  for (let index = 0; index < rows.length; index++) {
+    offsets[index + 1] =
+      offsets[index] + heights[rows[index].kind] + (rows[index].kind === 'spacer' ? 0 : growth);
+  }
+  return offsets;
+}
+
+/**
+ * One project group as it is laid out: from its header row to the bottom of
+ * its last row (its sessions, "show more", the empty note). Groups sit right
+ * on each other, so `gapAbove` and `gapBelow` are 0 next to another group;
+ * they are the spacer rows that part it from what is not a group (the pinned
+ * section above the first, the footer below the last).
+ */
+export interface GroupBlock {
+  key: string;
+  pinned: boolean;
+  top: number;
+  bottom: number;
+  gapAbove: number;
+  gapBelow: number;
+}
+
+/** A row that belongs to the group above it. */
+function isGroupMemberRow(row: SidebarRow): boolean {
+  return (
+    row.kind === 'group-more' ||
+    row.kind === 'group-empty' ||
+    (row.kind === 'session' && row.context === 'group')
+  );
+}
+
+/** The group blocks of `rows`, top to bottom. */
+export function groupBlocks(rows: readonly SidebarRow[], offsets: readonly number[]): GroupBlock[] {
+  const blocks: GroupBlock[] = [];
+  let index = 0;
+  while (index < rows.length) {
+    const row = rows[index];
+    if (row.kind !== 'group') {
+      index++;
+      continue;
+    }
+    let above = index;
+    while (above > 0 && rows[above - 1].kind === 'spacer') above--;
+    let end = index + 1;
+    while (end < rows.length && isGroupMemberRow(rows[end])) end++;
+    let below = end;
+    while (below < rows.length && rows[below].kind === 'spacer') below++;
+    blocks.push({
+      key: row.project.key,
+      pinned: row.project.pinned,
+      top: offsets[index],
+      bottom: offsets[end],
+      gapAbove: offsets[index] - offsets[above],
+      gapBelow: offsets[below] - offsets[end]
+    });
+    index = end;
+  }
+  return blocks;
+}
+
+/** Where a dragged group would go: next to `anchorKey`, with its drop line at `lineY` (content coordinates). */
+export interface GroupDrop {
+  anchorKey: string;
+  position: ProjectMovePosition;
+  lineY: number;
+}
+
+/** The line's 6px dot is centred on it: this low, at the top of the list, it is still whole. */
+const DROP_LINE_MIN_Y = 3;
+
+/**
+ * The drop target for a group dragged to content position `y`. Only the
+ * dragged group's band counts (a drag never crosses from pinned projects to
+ * the others), so a pointer above the band (the pinned section) means its
+ * top and one below it (the footer) its bottom. The dragged block goes
+ * before the first other block whose middle is below `y`. Null when that is
+ * where it already is, or the band has no other group. Works from the rows
+ * and offsets alone: collapsed groups, "show more" and rows not mounted
+ * count as laid out. The line sits in the middle of the gap it marks: on the
+ * edge between two groups, mid-spacer after the pinned section or before the
+ * footer, and never so high that its dot leaves the list.
+ */
+export function groupDropAt(
+  blocks: readonly GroupBlock[],
+  draggedKey: string,
+  y: number
+): GroupDrop | null {
+  const dragged = blocks.find((block) => block.key === draggedKey);
+  if (!dragged) return null;
+  const band = blocks.filter((block) => block.pinned === dragged.pinned);
+  const from = band.indexOf(dragged);
+  const others = band.filter((block) => block !== dragged);
+  if (others.length === 0) return null;
+  const to = others.filter((block) => (block.top + block.bottom) / 2 < y).length;
+  if (to === from) return null;
+  const last = others[others.length - 1];
+  const lineY = Math.max(
+    DROP_LINE_MIN_Y,
+    to < others.length ? others[to].top - others[to].gapAbove / 2 : last.bottom + last.gapBelow / 2
+  );
+  return to > 0
+    ? { anchorKey: others[to - 1].key, position: 'after', lineY }
+    : { anchorKey: others[0].key, position: 'before', lineY };
+}
+
+/**
+ * Move up / Move down in a group's menu: the move that swaps `key` with its
+ * neighbour in its band (`projects` in group order). Null at the band's edge.
+ */
+export function adjacentProjectMove(
+  projects: readonly SidebarProject[],
+  key: string,
+  direction: 'up' | 'down'
+): { anchorKey: string; position: ProjectMovePosition } | null {
+  const project = projects.find((item) => item.key === key);
+  if (!project) return null;
+  const band = projects.filter((item) => item.pinned === project.pinned);
+  const index = band.indexOf(project);
+  const neighbour = band[direction === 'up' ? index - 1 : index + 1];
+  if (!neighbour) return null;
+  return { anchorKey: neighbour.key, position: direction === 'up' ? 'before' : 'after' };
+}
+
+/**
+ * Auto-scroll while a group is dragged near an edge of the list (`top` and
+ * `bottom` of its box, `clientY` the pointer): up to `maxStep` px a frame,
+ * faster the deeper into the `edge` band (at most half the box), at full
+ * speed past it; negative scrolls up, 0 outside both bands.
+ */
+export function autoScrollDelta(
+  clientY: number,
+  top: number,
+  bottom: number,
+  edge: number,
+  maxStep: number
+): number {
+  const band = Math.min(edge, (bottom - top) / 2);
+  if (!(band > 0) || !Number.isFinite(clientY)) return 0;
+  const speed = (depth: number) => Math.ceil(maxStep * Math.min(1, depth / band));
+  if (clientY < top + band) return -speed(top + band - clientY);
+  if (clientY > bottom - band) return speed(clientY - (bottom - band));
+  return 0;
+}
+
+/** Where the drag ghost goes; one coordinate space for all (the hook uses the page's). */
+export interface GhostPlacement {
+  pointerY: number;
+  /** The drop line, or null without a drop target. */
+  lineY: number | null;
+  ghostHeight: number;
+  /** Space kept between the ghost and the pointer. */
+  pointerGap: number;
+  /** Space kept between the ghost and the drop line. */
+  lineGap: number;
+  /** The list's visible top. */
+  minTop: number;
+  /** The lowest top that keeps the ghost in the list: its visible bottom less ghostHeight. */
+  maxTop: number;
+}
+
+/**
+ * The drag ghost's top while a group is dragged. It follows the pointer, its
+ * bottom `pointerGap` above it, and moves only as far as keeping clear of the
+ * pointer and the drop line (`lineGap`) and inside the list takes: to the
+ * nearest top that does. A line far from the pointer leaves it where it is;
+ * a line just above the pointer puts it above the line, or below the pointer
+ * when there is no room up there; at the list's top it goes below the
+ * pointer, and below the line too when that is just under the pointer. A
+ * line outside the visible box is scrolled away and cannot be covered: only
+ * the pointer counts, as without a drop target. Only a list too short to
+ * hold the ghost clear of both puts it over the pointer (over the line only
+ * when no top in the list keeps clear of it), and one shorter than the ghost
+ * keeps its top.
+ */
+export function ghostTopFor({
+  pointerY,
+  lineY,
+  ghostHeight,
+  pointerGap,
+  lineGap,
+  minTop,
+  maxTop
+}: GhostPlacement): number {
+  const bottom = Math.max(minTop, maxTop);
+  const wanted = pointerY - pointerGap - ghostHeight;
+  const line = lineY !== null && lineY >= minTop && lineY <= bottom + ghostHeight ? lineY : null;
+  const inList = (top: number) => top >= minTop && top <= bottom;
+  // Tops at which the ghost comes closer than its gap to the pointer or the line.
+  const nearPointer = (top: number) => top > wanted && top < pointerY + pointerGap;
+  const nearLine = (top: number) =>
+    line !== null && top > line - lineGap - ghostHeight && top < line + lineGap;
+  // The nearest top that fits is the one the pointer wants or one at the edge
+  // of what it keeps clear of; on a tie the first listed, above before below.
+  const candidates =
+    line === null
+      ? [wanted, minTop, pointerY + pointerGap, bottom]
+      : [
+          wanted,
+          line - lineGap - ghostHeight,
+          minTop,
+          pointerY + pointerGap,
+          line + lineGap,
+          bottom
+        ];
+  const nearest = (fits: (top: number) => boolean): number | null => {
+    let best: number | null = null;
+    for (const top of candidates) {
+      if (fits(top) && (best === null || Math.abs(top - wanted) < Math.abs(best - wanted)))
+        best = top;
+    }
+    return best;
+  };
+  return (
+    nearest((top) => inList(top) && !nearPointer(top) && !nearLine(top)) ??
+    nearest((top) => inList(top) && !nearLine(top)) ??
+    Math.min(bottom, Math.max(minTop, wanted))
+  );
+}
+
+const UNMEASURED_VIEWPORT_HEIGHT = 600;
+
+/**
+ * Indices to render: rows intersecting [scrollTop - overscanPx,
+ * scrollTop + viewportHeight + overscanPx] (an unmeasured viewport of 0 counts
+ * as 600px), plus every valid index in `keepMounted`. Sorted and unique.
+ */
+export function getVisibleRowIndices(
+  offsets: readonly number[],
+  scrollTop: number,
+  viewportHeight: number,
+  overscanPx: number,
+  keepMounted: readonly number[] = []
+): number[] {
+  const count = Math.max(0, offsets.length - 1);
+  const top = Number.isFinite(scrollTop) ? Math.max(0, scrollTop) : 0;
+  const height =
+    Number.isFinite(viewportHeight) && viewportHeight > 0
+      ? viewportHeight
+      : UNMEASURED_VIEWPORT_HEIGHT;
+  const overscan = Number.isFinite(overscanPx) && overscanPx > 0 ? overscanPx : 0;
+  const windowStart = top - overscan;
+  const windowEnd = top + height + overscan;
+
+  // First row whose bottom edge is below windowStart.
+  let low = 0;
+  let high = count;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (offsets[mid + 1] > windowStart) high = mid;
+    else low = mid + 1;
+  }
+  const first = low;
+
+  // First row whose top edge is at or past windowEnd; the range ends before it.
+  low = first;
+  high = count;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (offsets[mid] >= windowEnd) high = mid;
+    else low = mid + 1;
+  }
+  const end = low;
+
+  const indices: number[] = [];
+  for (let index = first; index < end; index++) indices.push(index);
+  if (keepMounted.length === 0) return indices;
+
+  const extra = keepMounted.filter(
+    (index) =>
+      Number.isInteger(index) && index >= 0 && index < count && (index < first || index >= end)
+  );
+  if (extra.length === 0) return indices;
+  return [...new Set([...indices, ...extra])].sort((a, b) => a - b);
+}
+
+/**
+ * The scrollTop that brings row `index` into a viewport of `viewportHeight`
+ * now scrolled to `scrollTop`: centred when it is partly or wholly out of
+ * view, null when it is already in view (or there is no such row). With
+ * `block` "start" the row goes to the top unless it is there already (the
+ * browser clamps a list too short to put it there).
+ */
+export function revealScrollTop(
+  offsets: readonly number[],
+  index: number,
+  scrollTop: number,
+  viewportHeight: number,
+  block?: 'start'
+): number | null {
+  if (!Number.isInteger(index) || index < 0 || index >= offsets.length - 1) return null;
+  const top = offsets[index];
+  const bottom = offsets[index + 1];
+  if (block === 'start') return top === scrollTop ? null : top;
+  if (top >= scrollTop && bottom <= scrollTop + viewportHeight) return null;
+  return Math.max(0, top - Math.max(0, (viewportHeight - (bottom - top)) / 2));
+}
+
+/** A reveal request is dropped once its row has missed this many rows updates, or this long after it was made. */
+export const REVEAL_MAX_MISSES = 3;
+export const REVEAL_EXPIRY_MS = 3000;
+
+/** How many rows updates have missed one reveal request's row so far. */
+export interface RevealMisses {
+  id: number;
+  misses: number;
+}
+
+/**
+ * One look at the rows for a reveal request (SessionTreeReveal in
+ * components/SessionTree.tsx): "reveal" when its row is there, "wait" for the
+ * next rows update, "drop" when it is older than REVEAL_EXPIRY_MS (found or
+ * not: a row that turns up later, for another reason, is not scrolled to) or
+ * its row has now missed REVEAL_MAX_MISSES updates. `misses` is the count
+ * so far, kept for this id only; the next one comes back with the verdict.
+ */
+export function revealStep(
+  misses: RevealMisses | null,
+  request: { id: number; at: number },
+  found: boolean,
+  now: number
+): { misses: RevealMisses; action: 'reveal' | 'wait' | 'drop' } {
+  const current = misses?.id === request.id ? misses : { id: request.id, misses: 0 };
+  // Written so an unreadable time counts as too old.
+  if (!(now - request.at <= REVEAL_EXPIRY_MS)) return { misses: current, action: 'drop' };
+  if (found) return { misses: current, action: 'reveal' };
+  const next = { id: request.id, misses: current.misses + 1 };
+  return { misses: next, action: next.misses >= REVEAL_MAX_MISSES ? 'drop' : 'wait' };
+}

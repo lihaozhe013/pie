@@ -1,0 +1,1144 @@
+/*
+ * App-wide visual system: softer corners, readable type, quiet surfaces, and
+ * workspace-specific spacing. Keep these shared tokens and component styles
+ * together so the conversation UI has one coherent visual layer.
+ */
+
+/* ── Radius scale ───────────────────────────────────────────────────────── */
+
+:root {
+  --ui-radius-xs: 8px; /* badges, inline code, tiny chips */
+  --ui-radius-sm: 11px; /* buttons, fields, chips */
+  --ui-radius-md: 13px; /* rows, tool cards, message bubbles */
+  --ui-radius-lg: 18px; /* menus, cards, popovers */
+  --ui-radius-xl: 22px; /* dialogs, sheets, the composer */
+}
+
+/* Inline radii: every shape the components draw moves one or two steps up the
+   scale, sized by what it used to be so small chips do not turn into pills. */
+[style*='border-radius: 2px'],
+[style*='border-radius: 3px'] {
+  border-radius: var(--ui-radius-xs) !important;
+}
+
+[style*='border-radius: 4px'] {
+  border-radius: 10px !important;
+}
+
+[style*='border-radius: 5px'] {
+  border-radius: var(--ui-radius-sm) !important;
+}
+
+[style*='border-radius: 6px'] {
+  border-radius: 12px !important;
+}
+
+[style*='border-radius: 7px'],
+[style*='border-radius: 8px'],
+[style*='border-radius: 9px'] {
+  border-radius: var(--ui-radius-md) !important;
+}
+
+[style*='border-radius: 10px'],
+[style*='border-radius: 12px'] {
+  border-radius: var(--ui-radius-lg) !important;
+}
+
+[style*='border-radius: 14px'] {
+  border-radius: var(--ui-radius-xl) !important;
+}
+
+/* Circles and pills keep their shape (declared last so they win here). */
+[style*='border-radius: 50%'] {
+  border-radius: 50% !important;
+}
+
+[style*='border-radius: 999'] {
+  border-radius: 999px !important;
+}
+
+/* ── Class radii: small chips, badges, inline code ───────────────────────── */
+
+.markdown-body .markdown-inline-code,
+.markdown-file-preview code,
+.enabled-models-pin,
+.config-scope-tag,
+.settings-theme-chip,
+.mcp-config-chip,
+.project-trust-mcp-tag,
+.project-trust-mcp-chip,
+.markdown-code-action,
+.mermaid-zoom-stepper,
+.mermaid-zoom-icon-button {
+  border-radius: var(--ui-radius-xs);
+}
+
+.session-tree-rename,
+.sidebar-menu-item,
+.sidebar-menu-secondary,
+.sidebar-menu-filter-input,
+.sidebar-toast-action,
+.sidebar-toast-dismiss,
+.sidebar-menu-question-confirm,
+.sidebar-menu-question-cancel,
+.session-tree-action,
+.session-tree .session-tree-confirm-delete,
+.session-tree .session-tree-confirm-cancel,
+.session-tree .session-tree-group-action,
+.config-close-button,
+.config-sidebar-item,
+.config-button,
+.config-list-action-button,
+.config-add-source-input,
+.oauth-paste-input,
+.oauth-paste-submit,
+.enabled-models-error,
+.enabled-models-filter,
+.settings-shell-option,
+.settings-language-option,
+.settings-send-mode-option,
+.project-trust-button,
+.project-trust-mcp-server,
+.project-trust-path,
+.image-preview-close,
+.model-context-input,
+.mcp-add-input,
+.mcp-test-output {
+  border-radius: var(--ui-radius-sm);
+}
+
+/* ── Class radii: rows, cards, tool surfaces ─────────────────────────────── */
+
+.session-tree-session,
+.session-tree-group,
+.session-tree-drag-source,
+.sidebar-archive-entry-button,
+.session-tree-drag-ghost,
+.sidebar-files-section-toggle,
+.sidebar-search-input,
+.sidebar-tool-button,
+.project-picker-button,
+.project-picker.is-inline .project-picker-button,
+.markdown-code-block,
+.markdown-table-frame,
+.markdown-file-preview pre,
+.markdown-frontmatter,
+.mermaid-zoom-canvas,
+.compaction-file-list,
+.image-preview-image,
+.markdown-body img,
+.markdown-body video {
+  border-radius: var(--ui-radius-md);
+}
+
+/* ── Class radii: surfaces (menus, dialogs, panels, sheets) ──────────────── */
+
+.sidebar-menu,
+.sidebar-toast,
+.config-panel-root.is-modal > .config-panel-surface,
+.settings-dialog-surface,
+.project-trust-dialog,
+.web-login-brand img,
+.web-login-form button {
+  border-radius: var(--ui-radius-lg);
+}
+
+.web-login-composer {
+  border-radius: var(--ui-radius-xl);
+}
+
+/* A sheet rises from the screen's bottom edge: round its top corners only. */
+.sidebar-sheet {
+  border-radius: var(--ui-radius-xl) var(--ui-radius-xl) 0 0;
+}
+
+.markdown-body blockquote {
+  border-radius: 0 var(--ui-radius-md) var(--ui-radius-md) 0;
+}
+
+.session-tree-drop-line {
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+}
+
+/* ── Quiet frames: code fences and tables soften to match the tool cards ─── */
+
+/* The transcript's tool cards carry no outline (styles/tool-cards.css); the
+   markdown blocks between them keep theirs at half strength, so the column
+   reads as one quiet language instead of frames next to tints. */
+.markdown-code-block {
+  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+  box-shadow: none;
+}
+
+.markdown-code-header {
+  border-bottom-color: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+.markdown-table-frame {
+  border-color: color-mix(in srgb, var(--border) 55%, transparent);
+}
+
+/* ── Type: chat ─────────────────────────────────────────────────────────── */
+
+/*
+ * `--chat-content-font-size` is set inline by `hooks/useChatAppearance.ts`
+ * from its default; the value here keeps the first paint, before that hook
+ * has run, on the same scale.
+ */
+:root,
+[data-theme] {
+  --chat-content-font-size: calc(16px + var(--ui-font-size-offset, 0px));
+}
+
+.markdown-body {
+  line-height: 1.75;
+}
+
+.markdown-body p {
+  margin: 0 0 11px;
+}
+
+.markdown-body li {
+  margin: 4px 0;
+}
+
+.markdown-body li > p {
+  margin-bottom: 5px;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4,
+.markdown-body h5,
+.markdown-body h6 {
+  margin: 16px 0 7px;
+  line-height: 1.4;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 6px 0 11px;
+}
+
+.markdown-body blockquote {
+  padding: 8px 13px;
+  margin: 8px 0;
+  line-height: 1.7;
+}
+
+.markdown-body th,
+.markdown-body td {
+  padding: 8px 12px;
+}
+
+/* ── Type: session sidebar ──────────────────────────────────────────────── */
+
+.session-tree-title,
+.session-tree-group-toggle {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+  line-height: 1.35;
+}
+
+.session-tree.is-mobile .session-tree-title,
+.session-tree.is-mobile .session-tree-group-toggle {
+  font-size: calc(14px + var(--ui-font-size-offset, 0px));
+}
+
+.session-tree-meta,
+.session-tree-summary,
+.session-tree-group-empty,
+.session-tree-more,
+.session-tree-more-toggle,
+.session-tree-pinned-toggle {
+  font-size: calc(11.5px + var(--ui-font-size-offset, 0px));
+}
+
+.session-tree-message {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+  line-height: 1.5;
+}
+
+.sidebar-tab,
+.sidebar-new-button,
+.sidebar-search-toggle {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-tab-count {
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-files-section-toggle {
+  font-size: calc(12.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-search-input,
+.sidebar-archive-back {
+  font-size: calc(13.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-files-error {
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+/* The tree's row heights come from `SIDEBAR_ROW_HEIGHTS` (lib/session-tree.ts)
+   and stay there; only the sidebar's own header grows. */
+.sidebar-header {
+  height: 40px;
+}
+
+.sidebar-search-toggle {
+  width: 40px;
+}
+
+.sidebar-new-button {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+/* ── Type: sidebar menus and sheets ─────────────────────────────────────── */
+
+.sidebar-menu {
+  padding: 6px;
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-item {
+  height: 32px;
+  font-size: calc(13.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-label.is-mono {
+  font-size: calc(12.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-note {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-shortcut {
+  font-size: calc(11.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-header {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-filter-input,
+.sidebar-menu-empty {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu.is-classic .sidebar-menu-item {
+  font-size: calc(12.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu.is-classic .sidebar-menu-label.is-mono {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu.is-classic .sidebar-menu-note {
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu.is-classic .sidebar-menu-filter-input,
+.sidebar-menu.is-classic .sidebar-menu-empty {
+  font-size: calc(12.5px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-menu-question-text,
+.sidebar-menu-question-confirm,
+.sidebar-menu-question-cancel {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-toast,
+.sidebar-toast-action {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet {
+  font-size: calc(16px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet-title,
+.sidebar-sheet .sidebar-menu-header {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet .sidebar-menu-item {
+  font-size: calc(16px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet .sidebar-menu-label.is-mono {
+  font-size: calc(15px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet .sidebar-menu-note {
+  font-size: calc(14px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet .sidebar-menu-filter-input,
+.sidebar-sheet .sidebar-menu-question-text,
+.sidebar-sheet .sidebar-menu-question-confirm {
+  font-size: calc(15px + var(--ui-font-size-offset, 0px));
+}
+
+.sidebar-sheet .sidebar-menu-empty,
+.sidebar-sheet-cancel {
+  font-size: calc(16px + var(--ui-font-size-offset, 0px));
+}
+
+/* ── Type: settings ─────────────────────────────────────────────────────── */
+
+.config-panel-title,
+.settings-dialog-title {
+  font-size: calc(17px + var(--ui-font-size-offset, 0px));
+}
+
+.config-panel-subtitle {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+  line-height: 1.5;
+}
+
+.config-sidebar-group-label {
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+.config-sidebar-group-status {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.config-sidebar-item {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.config-sidebar-text {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+  line-height: 1.45;
+}
+
+.config-detail {
+  font-size: calc(13.5px + var(--ui-font-size-offset, 0px));
+  line-height: 1.6;
+}
+
+.config-detail-title {
+  font-size: calc(16px + var(--ui-font-size-offset, 0px));
+}
+
+.config-section-title {
+  font-size: calc(12.5px + var(--ui-font-size-offset, 0px));
+}
+
+.config-field-label {
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+}
+
+.config-empty-state {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+  line-height: 1.6;
+}
+
+.config-button-default {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.config-list-action-button {
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+/* Quiet workspace surfaces and interaction polish. */
+.app-workspace {
+  --workspace-line: color-mix(in srgb, var(--border) 65%, var(--bg));
+  --workspace-surface: color-mix(in srgb, var(--bg-panel) 72%, var(--bg));
+  --workspace-shadow:
+    0 2px 5px color-mix(in srgb, var(--text) 3%, transparent),
+    0 12px 32px -16px color-mix(in srgb, var(--text) 14%, transparent);
+  --workspace-motion: 160ms ease;
+}
+
+/* Quiet surfaces, rather than a grid of bordered toolbar cells. */
+.app-workspace .sidebar-container {
+  background: var(--workspace-surface) !important;
+  border-right-color: var(--workspace-line) !important;
+}
+
+.app-workspace .sidebar-archive-view {
+  background: var(--workspace-surface);
+}
+
+.workspace-toolbar {
+  background: var(--bg) !important;
+}
+
+.workspace-toolbar > div:first-child {
+  height: calc(44px + env(safe-area-inset-top)) !important;
+  border-bottom-color: var(--workspace-line) !important;
+}
+
+.app-workspace .sidebar-header {
+  height: 44px;
+  border-bottom-color: var(--workspace-line);
+}
+
+.app-workspace .sidebar-tab,
+.app-workspace .sidebar-new-button,
+.app-workspace .sidebar-search-toggle {
+  align-self: center;
+  height: 32px;
+  border-color: transparent;
+  border-radius: 9px;
+  transition:
+    background var(--workspace-motion),
+    color var(--workspace-motion);
+}
+
+.app-workspace .sidebar-tab.is-selected,
+.app-workspace .sidebar-search-toggle.is-active {
+  background: var(--bg-selected);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.workspace-toolbar > div:first-child > button,
+.workspace-toolbar > div:first-child > div > button {
+  border-right-color: transparent !important;
+  border-left-color: transparent !important;
+  border-radius: 9px !important;
+  transition:
+    background var(--workspace-motion),
+    color var(--workspace-motion);
+}
+
+@media (hover: hover) {
+  .workspace-toolbar > div:first-child > button:not(:disabled):hover,
+  .workspace-toolbar > div:first-child > div > button:not(:disabled):hover {
+    background: var(--bg-hover) !important;
+  }
+}
+
+/* capsule actions, not toolbar cells. Inline handlers still own semantic
+ * text colors (e.g. naming errors); only the surface and frame are skinned.
+ * Scope to immediate buttons so dropdowns and panels keep their own frames.
+ */
+.app-workspace .toolbar-actions {
+  align-items: center !important;
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.app-workspace .workspace-toolbar .toolbar-actions > button {
+  align-self: center;
+  height: 30px !important;
+  padding: 0 12px !important;
+  border: 1px solid var(--workspace-line) !important;
+  border-radius: 999px !important;
+  background: color-mix(in srgb, var(--bg-panel) 70%, var(--bg)) !important;
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg) 65%, transparent);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px)) !important;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition:
+    background var(--workspace-motion),
+    border-color var(--workspace-motion),
+    box-shadow var(--workspace-motion),
+    color var(--workspace-motion);
+}
+
+.app-workspace .toolbar-actions > button > svg {
+  flex-shrink: 0;
+}
+
+.app-workspace .toolbar-actions > button:disabled {
+  box-shadow: none;
+}
+
+@media (hover: hover) {
+  .app-workspace .workspace-toolbar .toolbar-actions > button:not(:disabled):hover {
+    background: color-mix(in srgb, var(--accent) 7%, var(--bg)) !important;
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border)) !important;
+    box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 8%, transparent);
+  }
+}
+
+.app-workspace .toolbar-actions > button[aria-pressed='true'] {
+  color: var(--accent) !important;
+  background: color-mix(in srgb, var(--accent) 11%, var(--bg)) !important;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border)) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.app-workspace .toolbar-actions > button:not(:disabled):active {
+  background: var(--bg-selected) !important;
+  box-shadow: none;
+}
+
+/* Keep the phone's icon widths and touch targets; no extra toolbar footprint. */
+.app-workspace .toolbar-actions.is-mobile {
+  gap: 0;
+  padding: 0;
+}
+
+.app-workspace .toolbar-actions.is-mobile > button {
+  height: 100% !important;
+  padding: 0 !important;
+  border-radius: 14px !important;
+  border-color: transparent !important;
+}
+
+/* Preserve the tree's alignment grid and exact virtualized row geometry. */
+.app-workspace .session-tree-session {
+  border-radius: 8px;
+  transition:
+    background var(--workspace-motion),
+    box-shadow var(--workspace-motion);
+}
+
+.app-workspace .session-tree-session.is-selected:not(.is-confirming) {
+  background: color-mix(in srgb, var(--bg-selected) 76%, var(--bg));
+  box-shadow: inset 0 0 0 1px var(--workspace-line);
+}
+
+.app-workspace .session-tree-session.is-selected::before {
+  left: 3px;
+  width: 2px;
+  border-radius: 2px;
+}
+
+.app-workspace .session-tree-title {
+  letter-spacing: -0.01em;
+}
+
+.app-workspace .session-tree-meta,
+.app-workspace .sidebar-tab-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.app-workspace .sidebar-files-panel {
+  border-top-color: var(--workspace-line);
+}
+
+.app-workspace .project-picker-button {
+  border-color: var(--workspace-line);
+}
+
+.app-workspace .sidebar-search-input {
+  background: var(--bg);
+  border-color: var(--workspace-line);
+}
+
+/* A single elevated writing surface, with an understated focus treatment.
+ * Do not override border colors: streaming / shell states own those colors.
+ * The quote composer intentionally does not get this class.
+ */
+.app-workspace .composer-surface {
+  min-height: 72px;
+  border-radius: 18px !important;
+  box-shadow: var(--workspace-shadow) !important;
+}
+
+.app-workspace .composer-surface:focus-within {
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent),
+    var(--workspace-shadow) !important;
+}
+
+.app-workspace .chat-input-textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 1;
+}
+
+.app-workspace .chat-input-controls {
+  padding: 2px 0;
+}
+
+.app-workspace .chat-input-controls button {
+  transition:
+    background var(--workspace-motion),
+    color var(--workspace-motion);
+}
+
+/* Keep the existing brand, workspace picker and composer in their places. */
+.app-workspace .new-session-brand {
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+.app-workspace .new-session-brand-name {
+  font-family: var(--font-ui);
+  font-size: calc(26px + var(--ui-font-size-offset, 0px));
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1.25;
+}
+
+.app-workspace .new-session-brand-text {
+  gap: 5px;
+}
+
+.app-workspace .new-session-meta {
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+}
+
+.app-workspace .new-session-context {
+  margin-bottom: 10px;
+}
+
+.app-workspace .markdown-code-block,
+.app-workspace .markdown-table-frame {
+  border-color: var(--workspace-line);
+  border-radius: 12px;
+}
+
+/* Keyboard focus stays visible even on controls styled inline. */
+.app-workspace :where(button, a, input, textarea, [role='separator']):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.app-workspace .chat-input-textarea:focus-visible {
+  outline: none; /* The containing writing surface draws the focus ring. */
+}
+
+@media (min-width: 641px) {
+  .workspace-toolbar > div:first-child > button,
+  .workspace-toolbar > div:first-child > div > button {
+    align-self: center;
+    height: 32px !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-workspace .new-session-brand {
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .app-workspace .new-session-brand-name {
+    font-size: calc(23px + var(--ui-font-size-offset, 0px));
+  }
+
+  .app-workspace .composer-surface {
+    min-height: 64px;
+    border-radius: 16px !important;
+  }
+}
+
+@media (pointer: coarse) {
+  .app-workspace .sidebar-header {
+    height: 48px;
+  }
+
+  .workspace-toolbar > div:first-child {
+    height: calc(48px + env(safe-area-inset-top)) !important;
+  }
+
+  .app-workspace .sidebar-tab,
+  .app-workspace .sidebar-new-button,
+  .app-workspace .sidebar-search-toggle {
+    height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-workspace {
+    --workspace-motion: 0s;
+  }
+}
+
+/* Conversation information replaces the retired file and terminal workspace. */
+.session-info-sidebar {
+  /* The user's own width (drag, keys, or the stored one); a window, a wide
+     sidebar or an overlay layout caps what it shows. */
+  flex: 0 0 var(--runs-panel-width, 260px);
+  width: var(--runs-panel-width, 260px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--border);
+  background: var(--bg-panel);
+  outline: none;
+}
+.session-info-sidebar.is-overlay {
+  position: fixed;
+  inset: 0 0 0 auto;
+  width: min(var(--runs-panel-width, 260px), 100vw);
+  z-index: 600;
+}
+.session-info-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 20%);
+  z-index: 599;
+}
+.session-info-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+.session-info-header button {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: calc(22px + var(--ui-font-size-offset, 0px));
+}
+.session-info-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+.session-info-content .tool-definitions-panel {
+  display: flex;
+  flex-direction: column;
+  max-height: none;
+}
+.session-info-content .tool-definitions-sidebar {
+  width: auto;
+  max-height: 200px;
+  border-right: 0;
+}
+.session-info-content .tool-definition-detail {
+  min-width: 0;
+}
+@media (max-width: 640px) {
+  .session-info-sidebar.is-overlay {
+    width: 100vw;
+  }
+}
+.session-info-sidebar {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.session-info-sidebar :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Session Info / Runs Sidebar Header */
+.session-info-header-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: var(--text);
+  font-size: calc(13px + var(--ui-font-size-offset, 0px));
+}
+
+.session-info-close-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+
+.session-info-close-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.session-info-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Docked Runs panel toggle button on the right edge */
+/* The Runs panel's edge toggle: the sidebar's panel button mirrored into the
+   page toolbar, so a closed panel opens from the corner it docks in. The
+   toolbar skin gives it its capsule surface, like the sidebar toggle. */
+.runs-panel-toggle-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+
+.runs-panel-toggle-btn:hover {
+  color: var(--text);
+}
+
+.runs-panel-toggle-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.runs-toggle-dot {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 2px var(--bg);
+  animation: runs-dot-pulse 1.8s infinite ease-in-out;
+}
+
+@keyframes runs-dot-pulse {
+  0%,
+  100% {
+    transform: scale(0.9);
+    opacity: 0.8;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+}
+
+/* Modal backdrop and dialog for System, Tools, Session Stats */
+.session-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  padding: 16px;
+  animation: session-modal-fade-in 0.15s ease-out;
+}
+
+.session-modal-surface {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-height: calc(100dvh - 32px);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+  outline: none;
+  animation: session-modal-scale-in 0.15s ease-out;
+}
+
+.session-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
+  flex-shrink: 0;
+}
+
+.session-modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+
+.session-modal-title {
+  margin: 0;
+  font-size: calc(14px + var(--ui-font-size-offset, 0px));
+  font-weight: 600;
+  color: var(--text);
+}
+
+.session-modal-close-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+
+.session-modal-close-btn:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+
+.session-modal-close-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.session-modal-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+@keyframes session-modal-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes session-modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .session-modal-backdrop,
+  .session-modal-surface,
+  .runs-panel-toggle-btn {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .session-modal-backdrop {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .session-modal-surface {
+    max-height: 90dvh;
+    border-radius: 12px 12px 0 0;
+    border-bottom: none;
+  }
+}
+
+/* Chat and Tasks: one workspace, one choice at a time. */
+.workspace-toolbar-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 0 8px;
+}
+
+.workspace-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: 30px;
+  padding: 2px;
+  border: 1px solid var(--workspace-line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-panel) 70%, var(--bg));
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--bg) 65%, transparent);
+}
+
+.workspace-switch-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: calc(12px + var(--ui-font-size-offset, 0px));
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    background var(--workspace-motion),
+    box-shadow var(--workspace-motion),
+    color var(--workspace-motion);
+}
+
+.workspace-switch-item > svg {
+  flex-shrink: 0;
+  color: var(--text-dim);
+}
+
+.workspace-switch-item:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+
+.workspace-switch-item[data-active='true'] {
+  background: var(--bg-panel);
+  color: var(--text);
+  box-shadow:
+    inset 0 0 0 1px var(--workspace-line),
+    0 1px 2px color-mix(in srgb, var(--text) 10%, transparent);
+}
+
+.workspace-switch-item[data-active='true'] > svg {
+  color: var(--accent);
+}
+
+.workspace-switch-item:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* The task view fills the center column the conversation uses. */
+.workspace-task-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace-task-view > .task-workspace {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+@media (max-width: 420px) {
+  .workspace-switch-item {
+    padding: 0 9px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace-switch-item {
+    transition: none;
+  }
+}

@@ -1,0 +1,22 @@
+# Dependencies and package-manager metadata
+node_modules/
+.pnp.*
+bun.lock
+
+# Next.js and build output
+.next/
+out/
+build/
+coverage/
+
+# Generated TypeScript files
+next-env.d.ts
+*.tsbuildinfo
+
+# Browser-test artifacts
+test-results/
+playwright-report/
+
+# Generated archives and logs
+*.tgz
+*.log

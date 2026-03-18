@@ -1,0 +1,65 @@
+import { existsSync } from 'node:fs';
+import { json } from '@/server/http';
+import {
+  getGlobalSettingsPath,
+  readGlobalSettings,
+  updateGlobalSettings
+} from '@/lib/global-settings-file';
+import { hasJsonContentType, isApiRequestAllowed } from '@/lib/request-security';
+
+// Settings › General's switch for pi's own `showCacheMissNotices` (#1265), in
+// the global settings.json under the lock pi's SettingsManager takes. Off is
+// pi's default, so turning it off removes the key. A project's
+// .pi/settings.json still overrides it, as in pi.
+
+const KEY = 'showCacheMissNotices';
+
+async function readEnabled(): Promise<boolean> {
+  return readGlobalSettings(getGlobalSettingsPath(), (settings) => settings[KEY] === true);
+}
+
+function errorResponse(error: unknown) {
+  return json(
+    { error: error instanceof Error ? error.message : String(error) },
+    { status: 500 }
+  );
+}
+
+export async function GET() {
+  try {
+    return json({ enabled: await readEnabled() });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}
+
+export async function PUT(req: Request) {
+  if (!isApiRequestAllowed(req)) {
+    return json({ error: 'Untrusted API request' }, { status: 403 });
+  }
+  if (!hasJsonContentType(req)) {
+    return json({ error: 'Content-Type must be application/json' }, { status: 415 });
+  }
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+  const enabled = (body as { enabled?: unknown } | null)?.enabled;
+  if (typeof enabled !== 'boolean') {
+    return json({ error: 'enabled must be a boolean' }, { status: 400 });
+  }
+  try {
+    // Off with no settings file is already pi's default: nothing to create.
+    if (!enabled && !existsSync(getGlobalSettingsPath()))
+      return json({ enabled: false });
+    await updateGlobalSettings(getGlobalSettingsPath(), (settings) => {
+      if (enabled) settings[KEY] = true;
+      else delete settings[KEY];
+    });
+    return json({ enabled: await readEnabled() });
+  } catch (error) {
+    return errorResponse(error);
+  }
+}

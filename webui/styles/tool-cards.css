@@ -1,0 +1,229 @@
+/* Tool-card surfaces and execution status. */
+
+/*
+ * Quiet tool cards: no outline at all — shades of the text token draw the card,
+ * the way modern chat agents frame their edits (Claude's edit cards, ChatGPT's
+ * tool rows). The card surface lifts off the transcript, and the code, diff or
+ * output inside it sits a shade deeper, so the body reads as a pane of its own
+ * instead of as the page background. Both shades mix semantic tokens, so every
+ * theme gets a proportional tint without another hard-coded colour. The radius
+ * comes from the inline 7px, which styles/workspace.css lifts to --ui-radius-md,
+ * the message-bubble radius. State stays in a quiet status mark (below the
+ * buffer for running shells); only an error warms the tint.
+ */
+.tool-card {
+  /* The card surface, and the inset body pane that `--tool-card-pane` overlays. */
+  --tool-card-surface: color-mix(in srgb, var(--text) 5%, var(--bg));
+  --tool-card-pane: color-mix(in srgb, var(--text) 4%, transparent);
+  background: var(--tool-card-surface);
+  /* A state change warms or cools the surface instead of swapping the colour. */
+  transition: background-color 240ms ease;
+}
+
+.tool-card[data-state='error'] {
+  background: color-mix(in srgb, #f87171 8%, var(--tool-card-surface));
+}
+
+.tool-card-header {
+  min-height: 36px;
+  font-family: var(--font-mono);
+}
+
+/* A quiet hover: the text token at a whisper, so the tint deepens instead of
+   an opaque wash covering it. */
+.tool-card-header:hover {
+  background: color-mix(in srgb, var(--text) 4.5%, transparent) !important;
+}
+.tool-card-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.codemode-script {
+  border-top: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.codemode-script summary {
+  cursor: pointer;
+  padding: 8px 12px;
+}
+.codemode-script summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.codemode-script pre {
+  margin: 0;
+  padding: 9px 12px;
+  background: var(--tool-card-pane);
+  font-size: var(--font-mono-size, 15px);
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (pointer: coarse) {
+  .codemode-script summary {
+    min-height: 44px;
+    display: list-item;
+    align-content: center;
+  }
+}
+
+.tool-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: calc(11px + var(--ui-font-size-offset, 0px));
+  white-space: nowrap;
+}
+
+/* Outside the scrollable output so even a silent command has a visible cursor. */
+.shell-running {
+  padding: 8px 12px 10px;
+  line-height: 1.5;
+}
+
+.tool-status[data-state='running'] {
+  color: var(--accent);
+}
+.tool-status[data-state='error'] {
+  color: var(--error, #f87171);
+}
+.tool-status-mark {
+  display: inline-block;
+  width: 1ch;
+  text-align: center;
+}
+.tool-status[data-state='running'] .tool-status-mark {
+  animation: tool-card-cursor 1.1s steps(2, jump-none) infinite;
+}
+
+@keyframes tool-card-cursor {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.25;
+  }
+}
+
+/*
+ * Motion. A card's life is a handful of small changes: it appears when the call
+ * starts, its status mark flips, its body opens and closes, a result pane or a
+ * codemode call arrives, and it leaves when the call folds out of the
+ * transcript. Each one fades and eases its box instead of cutting, so the steps
+ * read as a flow rather than a series of jumps.
+ *
+ * Only a card that lived in this page moves: `data-live` is set when the call was
+ * still running at mount (MessageView.tsx), so a history load, a re-render of the
+ * same message or a scroll never replays any of it. Everything here animates
+ * opacity, transform or a box size, and honours reduced motion.
+ */
+@keyframes tool-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.tool-card[data-live='true'] {
+  animation: tool-card-in 180ms ease-out;
+}
+
+/* The status mark is re-keyed on every state change, so it fades in from here. */
+@keyframes tool-status-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+.tool-card[data-live='true'] .tool-status {
+  animation: tool-status-in 160ms ease-out;
+}
+
+/*
+ * The card's body folds open and shut (`grid-template-rows` 0fr ↔ 1fr, which
+ * grows from the content's own height without measuring it). The content is
+ * clipped, never laid out at zero height. The opacity is a second, plainer fade
+ * for a browser that cannot interpolate the track: the fold would snap there,
+ * but the body would still arrive and leave softly instead of blinking.
+ */
+.tool-card-body {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transition:
+    grid-template-rows 200ms ease,
+    opacity 160ms ease;
+}
+.tool-card-body[data-open='true'] {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+.tool-card-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* A pane that arrives while the call runs (its result, a diff, a codemode call). */
+@keyframes tool-card-pane-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+}
+.tool-card[data-live='true'] .tool-card-pane,
+.tool-card[data-live='true'] .tool-card-body-content,
+.tool-card[data-live='true'] .codemode-call {
+  animation: tool-card-pane-in 200ms ease-out;
+}
+
+/* A card on its way out of the transcript: it fades and folds away where it stood. */
+@keyframes tool-card-out {
+  from {
+    opacity: 1;
+    grid-template-rows: 1fr;
+  }
+  to {
+    opacity: 0;
+    grid-template-rows: 0fr;
+  }
+}
+.tool-card-exit {
+  display: grid;
+  grid-template-rows: 1fr;
+  animation: tool-card-out 240ms ease-in forwards;
+}
+.tool-card-exit > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tool-status[data-state='running'] .tool-status-mark {
+    animation: none;
+  }
+  .tool-card-header svg {
+    transition: none !important;
+  }
+  .tool-card[data-live='true'],
+  .tool-card[data-live='true'] .tool-status,
+  .tool-card[data-live='true'] .tool-card-pane,
+  .tool-card[data-live='true'] .tool-card-body-content,
+  .tool-card[data-live='true'] .codemode-call,
+  .tool-card-exit {
+    animation: none !important;
+  }
+  .tool-card,
+  .tool-card-body {
+    transition: none !important;
+  }
+}
+@media (pointer: coarse) {
+  .tool-card-header {
+    min-height: 44px;
+  }
+}

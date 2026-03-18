@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "resources": {
+      "../build/desktop/payload.tar.gz": "payload.tar.gz",
+      "../build/desktop/payload.json": "payload.json"
+    }
+  }
+}

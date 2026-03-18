@@ -1,0 +1,246 @@
+name: CI build
+
+# Build-only CI: push the `ci` branch to build both clients and replace the `ci-latest`
+# release with the complete artifact set. Nothing else runs: no tests, no typecheck, no lint.
+on:
+  push:
+    branches: [ci]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ci-latest
+
+jobs:
+  web:
+    name: Portable web archive (Linux x64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          check-latest: true
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # The same pipeline that produces the desktop payload: built interface plus server
+      # bundle, production dependencies only, source maps pruned. The archive carries no
+      # Node.js runtime and needs no compilation step on the target machine.
+      - name: Build portable archive
+        run: bun run package:portable
+
+      - name: Upload portable archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: pie-web-portable
+          path: |
+            webui/build/portable/*.tar.gz
+            webui/build/portable/*.tar.gz.sha256
+          if-no-files-found: error
+
+  desktop:
+    name: Windows x86-64 desktop installer
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: webui
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          check-latest: true
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache Cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: webui/src-tauri
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Builds the portable payload, the release shell, and the NSIS installer.
+      # The payload ships inside the installer, so the installer is the whole product.
+      - name: Build desktop package
+        run: bun run desktop:build
+
+      - name: Locate installer
+        id: installer
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -Path 'src-tauri/target/release/bundle/nsis' -Filter '*.exe' |
+            Select-Object -First 1
+          if (-not $installer) { throw 'Tauri did not produce an NSIS installer' }
+          Write-Host "Installer: $($installer.FullName) ($([math]::Round($installer.Length / 1MB, 1)) MiB)"
+          "path=$($installer.FullName)" >> $env:GITHUB_OUTPUT
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v7
+        with:
+          name: pie-desktop-windows
+          path: ${{ steps.installer.outputs.path }}
+          if-no-files-found: error
+
+  tui:
+    name: TUI ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+    defaults:
+      run:
+        working-directory: tui
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: tui/go.mod
+          cache-dependency-path: tui/go.sum
+
+      # The TUI is pure Go, so one Linux runner cross-compiles every target. The archive
+      # preserves the executable bit on Unix; Windows ships a zip with the .exe.
+      - name: Build binary archive
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: '0'
+        run: |
+          set -euo pipefail
+          short="${GITHUB_SHA::7}"
+          version="$(node -p "require('../webui/package.json').version")+${short}"
+          name="pie-tui-${short}-${GOOS}-${GOARCH}"
+          mkdir -p dist
+          if [ "$GOOS" = windows ]; then
+            binary="pie.exe"
+          else
+            binary="pie"
+          fi
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" -o "dist/${binary}" ./cmd/pie
+          if [ "$GOOS" = windows ]; then
+            (cd dist && zip -q "${name}.zip" "${binary}" && rm "${binary}")
+          else
+            (cd dist && tar -czf "${name}.tar.gz" "${binary}" && rm "${binary}")
+          fi
+          ls -l dist
+
+      - name: Upload binary archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: pie-tui-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: tui/dist/*
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    needs: [desktop, web, tui]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Collect artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: '*'
+          merge-multiple: true
+          path: dist
+
+      # The web archive ships its own checksum. This file covers every release asset so one
+      # command verifies the whole download.
+      - name: Write checksums
+        run: |
+          set -euo pipefail
+          cd dist
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS' ! -name '*.sha256' -printf '%P\0' |
+            sort -z | xargs -0 sha256sum > SHA256SUMS
+          ls -l
+
+      # The release is replaced on every run: the previous release and its tag are deleted
+      # first, so `ci-latest` always points at the newest successful `ci` build.
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          gh release delete "$tag" --yes --cleanup-tag --repo "$GITHUB_REPOSITORY" \
+            || echo "No previous release for tag $tag"
+          gh api --method DELETE "repos/$GITHUB_REPOSITORY/git/refs/tags/$tag" >/dev/null 2>&1 || true
+
+          version="$(node -p "require('./webui/package.json').version")"
+          short="${GITHUB_SHA::7}"
+          notes=$(
+            printf '%s\n' \
+              "Automated build from branch ci: version ${version}+${short}." \
+              '' \
+              'Web UI:' \
+              '- Windows x86-64 NSIS installer. It contains the payload and needs Windows x64, Node.js, and the WebView2 runtime.' \
+              '- Portable web archive. It needs only Node.js 22.14 or newer and network access.' \
+              '' \
+              'TUI:' \
+              '- Linux, macOS, and Windows archives for amd64 and arm64. They are statically compiled with CGO disabled and need the pi binary on PATH.' \
+              '' \
+              "- Commit: $GITHUB_SHA" \
+              "- Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              '' \
+              'SHA256SUMS covers the release assets. The web archive also ships its own .sha256.'
+          )
+
+          gh release create "$tag" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Pie $version (CI build $short)" \
+            --notes "$notes"

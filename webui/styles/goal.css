@@ -1,0 +1,99 @@
+/* The goal form inside the composer hub: the current state, the objective and
+   the commands. It is one section of the dialog, so it carries no chrome of its
+   own. */
+
+.goal-current {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg-subtle);
+}
+
+.goal-current-status {
+  font-weight: 600;
+}
+
+.goal-current[data-state='active'] .goal-current-status {
+  color: var(--accent);
+}
+
+.goal-current-meta {
+  color: var(--text-muted);
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.goal-field label {
+  font-weight: 600;
+}
+
+.goal-field textarea {
+  min-height: 92px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.goal-field textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.goal-field textarea:disabled {
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+}
+
+.goal-field textarea[aria-invalid='true'] {
+  border-color: #ef4444;
+}
+
+.goal-hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.92em;
+  line-height: 1.5;
+}
+
+.goal-error {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.92em;
+  font-weight: 600;
+}
+
+.goal-error::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #ef4444;
+  vertical-align: 2px;
+}
+
+/* Four commands and the primary action share one row; on a phone they wrap. */
+@media (max-width: 520px) {
+  .composer-hub-actions {
+    flex-wrap: wrap;
+  }
+
+  .composer-hub-actions .hub-button {
+    flex: 1 1 auto;
+  }
+}
