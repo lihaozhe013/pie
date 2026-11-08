@@ -1006,6 +1006,7 @@ func (m *Model) helpItems() []pickerItem {
 		{"ctrl+s", "steer the running turn"},
 		{"esc", "interrupt the running turn"},
 		{"ctrl+c", "interrupt; clear the prompt (up restores it); on empty, twice to quit"},
+		{"ctrl+d", "in the resume list, twice to delete the selected session"},
 		{"ctrl+k", "pick a model"},
 		{"ctrl+g", "pick a tool preset"},
 		{"shift+left / shift+right", "cycle tool presets"},
@@ -1925,6 +1926,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	// A pending delete only survives until the next key press, so confirming
+	// really is two ctrl+d presses with nothing in between.
+	if o.sessionPicker() && key != "ctrl+d" && o.deleteArm != "" {
+		o.disarmDelete()
+	}
+
 	switch key {
 	case "esc":
 		if o.requestID != "" {
@@ -1977,6 +1984,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+s":
 		if o.kind == overlayEditor {
 			return m, m.answerInput(o.editor.Value())
+		}
+
+	case "ctrl+d":
+		// The first press only arms the row; the second deletes it.
+		if o.sessionPicker() {
+			return m, m.deleteSelectedSession()
 		}
 
 	case "ctrl+c":

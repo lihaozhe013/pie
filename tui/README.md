@@ -97,7 +97,8 @@ pie (Go, Bubble Tea)  ⇄  stdin/stdout JSONL  ⇄  pi --mode rpc (host binary)
   session headers, a directory browser, and `/cwd <path>` for direct entry.
   Switching restarts pi in the new folder and starts a fresh session there.
   `/resume` lists the current folder's sessions and offers "Show all
-  directories" for the rest
+  directories" for the rest. Pressing `ctrl+d` twice on a row deletes that
+  session and re-parents its forks, so cleanup does not need the Web UI
 - An MCP tab that lists the agent and project `mcp.json` servers, checks
   connections with `pi mcp list --json`, toggles `enabled`, sets the exposure
   mode, shows env and header names with values masked, adds servers through
@@ -170,7 +171,7 @@ the fallback when `pie` runs locally.
 | `ctrl+s` | steer the running turn |
 | `esc` | interrupt the running turn (queues are restored to the editor) |
 | `ctrl+c` | interrupt; clear the prompt (press `up` to restore it); on an empty prompt, press twice to quit |
-| `ctrl+d` | delete the character under the cursor; quit when the editor is empty |
+| `ctrl+d` | delete the character under the cursor; quit when the editor is empty; twice in the resume list, delete the selected session |
 | `ctrl+k` | pick a model |
 | `ctrl+g` | pick a tool preset |
 | `shift+left` / `shift+right` | cycle tool presets |
@@ -200,13 +201,13 @@ memory from other CLIs keeps working.
 | Command | Aliases | Description |
 |---|---|---|
 | `/settings` | `/config`, `/prefs` | open the settings panel; `/settings models` opens a tab |
-| `/preset` | `/tools` | change the tool preset (`/preset plan`, `/preset configured`, or a custom name) |
+| `/preset` | `/tools`, `/tool` | change the tool preset (`/preset plan`, `/preset configured`, or a custom name) |
 | `/model` | `/models` | switch model |
 | `/login` | | sign in to a provider with OAuth or an API key |
 | `/logout` | | sign out of a provider and delete its stored credential |
-| `/think` | | cycle the thinking level |
+| `/think` | `/reasoning`, `/effort` | cycle the thinking level |
 | `/new` | | start a new session |
-| `/resume` | `/continue`, `/sessions` | resume another session |
+| `/resume` | `/continue`, `/sessions`, `/history` | resume another session; `ctrl+d` twice deletes the selected row |
 | `/compact` | `/compress` | compact the conversation |
 | `/name` | `/rename` | rename this session |
 | `/title` | | regenerate the title from the transcript with a one-shot model call |

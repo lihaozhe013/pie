@@ -769,6 +769,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.openOverlay(newPickerOverlay("session", "Resume session", items))
 		return m, nil
 
+	case sessionDeleteMsg:
+		return m.applySessionDelete(msg)
+
 	case historyMsg:
 		// A history load only happens after switch_session succeeded, so the
 		// old session's title request is no longer valid even if loading the

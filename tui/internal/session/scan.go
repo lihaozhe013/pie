@@ -1,6 +1,6 @@
 // Package session inspects pi's session directory so the client can offer a
-// resume picker. It reads session files but never writes them: pi owns that
-// storage.
+// resume picker. It only reads session files, except for the explicit delete
+// path in delete.go: pi owns every other write to that storage.
 package session
 
 import (

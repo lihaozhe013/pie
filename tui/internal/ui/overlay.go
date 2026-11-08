@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -58,6 +59,13 @@ type overlay struct {
 
 	// returnTo is the overlay this one was opened from, restored on close.
 	returnTo *overlay
+
+	// deleteArm is the session row the first ctrl+d selected, and deleteArmAt
+	// when it happened. A second press on the same row inside
+	// sessionDeleteWindow deletes it, so one stray chord cannot remove a
+	// conversation.
+	deleteArm   string
+	deleteArmAt time.Time
 }
 
 const maxPickerRows = 10
@@ -178,6 +186,37 @@ func (o *overlay) selected() (pickerItem, bool) {
 		return pickerItem{}, false
 	}
 	return o.filtered[o.cursor], true
+}
+
+// sessionPicker reports whether the rows are resumable sessions, which are the
+// pickers that accept ctrl+d deletion.
+func (o *overlay) sessionPicker() bool {
+	return o.kind == overlayPicker && (o.action == "session" || o.action == "session-search-hit")
+}
+
+// deleteArmedNow reports whether a second ctrl+d on value may delete it.
+func (o *overlay) deleteArmedNow(value string) bool {
+	return o.deleteArm != "" && o.deleteArm == value && time.Since(o.deleteArmAt) < sessionDeleteWindow
+}
+
+func (o *overlay) disarmDelete() {
+	o.deleteArm = ""
+	o.deleteArmAt = time.Time{}
+}
+
+// dropItem removes one row and leaves the cursor on the row that followed it.
+// It reports whether the row was still present, so a late deletion message
+// cannot disturb a picker the user already replaced.
+func (o *overlay) dropItem(value string) bool {
+	for i, item := range o.items {
+		if item.Value != value {
+			continue
+		}
+		o.items = append(o.items[:i], o.items[i+1:]...)
+		o.refilter()
+		return true
+	}
+	return false
 }
 
 // Update forwards typing to the overlay's input widget.
@@ -352,6 +391,17 @@ func (o *overlay) renderPicker(body *strings.Builder, st styles) {
 	hint := "enter to select \u00b7 esc to cancel \u00b7 \u2191/\u2193 to move"
 	if o.action == "palette" {
 		hint = "enter to run \u00b7 esc to cancel \u00b7 \u2191/\u2193 to move"
+	}
+	if o.sessionPicker() {
+		armed := false
+		if item, ok := o.selected(); ok {
+			armed = o.deleteArmedNow(item.Value)
+		}
+		if armed {
+			hint = "ctrl+d again to delete \u00b7 esc to cancel"
+		} else {
+			hint = "enter to resume \u00b7 ctrl+d twice to delete \u00b7 esc to cancel"
+		}
 	}
 	body.WriteString(st.overlayHint.Render(hint))
 }

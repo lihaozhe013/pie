@@ -70,7 +70,8 @@ each `.jsonl` file for the ID and working directory, and finds the newest
 `session_info` name by reading the file backwards in chunks. A fixed tail probe
 would miss a title written early in a session and later pushed megabytes from
 the end by a long conversation. Broken files are skipped so one bad file cannot
-break the resume picker.
+break the resume picker. `delete.go` is the only code here that writes session
+storage; the resume-picker section below explains when it runs.
 
 ### `internal/ui`
 
@@ -242,6 +243,18 @@ match is checked before reading the body, and the transcript scan unmarshals
 each matching line and walks its string values so the snippet reads as text.
 The scan is capped per file so a huge session cannot stall the picker; the
 result resumes the session through the existing `switch_session` path.
+
+Both session pickers (resume and search results) delete with `ctrl+d` twice.
+The first press arms the selected row for 1.5 seconds, matching the ctrl+c quit
+window, and shows which session a second press would remove; a single stray
+chord therefore never deletes a conversation. The active session is refused
+because pi keeps appending to its open file. `session.Delete` is the only write
+the client makes to session storage: it re-parents forks whose header names the
+deleted file to that file's own parent, rewrites each child header through a
+temporary file and rename so an interrupted write cannot truncate a
+conversation, and then unlinks the target. Children that cannot be read are
+left alone rather than blocking the delete the user asked for. The picker drops
+the row in place, so deleting several sessions in a row needs no reopen.
 
 `/context` is fed by `/pie-publish`, not by the UI guessing: the bridge reads
 `getActiveTools`, `getAllTools`, `getSystemPrompt`, and the session's work mode,
