@@ -562,10 +562,12 @@ func (c *composer) renderRow(index int, cursorHere bool, width int) string {
 	return out.String()
 }
 
-// placeholderLine shows the hint with the caret parked in front of it.
+// placeholderLine shows the hint with the caret parked in front of it. The
+// hint follows the caret cell directly so the empty prompt does not look
+// indented relative to the text a key press will insert.
 func (c *composer) placeholderLine(width int) string {
-	text := truncateLine(c.placeholder, maxInt(0, width-2))
-	return c.styles.editorCursor.Render(" ") + " " + c.styles.editorPlaceholder.Render(text)
+	text := truncateLine(c.placeholder, maxInt(0, width-1))
+	return c.styles.editorCursor.Render(" ") + c.styles.editorPlaceholder.Render(text)
 }
 
 // scrollbarCell renders the one-column track beside the buffer. Rows outside
