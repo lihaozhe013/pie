@@ -97,10 +97,12 @@ session with no model adopts the new provider's first one.
 ## Tools
 
 - Current applies `defaultTools` through the bridge. Presets are the built-in
-  configured, plan, chat-only, read-only, default, and full sets plus custom
-  entries from `pie-tool-presets.json`. The last applied preset is stored in
-  `pie-settings.json` (`toolPreset`) and reapplied to a new session; a
-  resumed session keeps the selection recorded in its own log.
+  configured, plan, autonomous, chat-only, read-only, default, and full sets
+  plus custom entries from `pie-tool-presets.json`. The last applied preset is
+  stored in `pie-settings.json` (`toolPreset`) and reapplied to a new session;
+  a resumed session keeps the selection recorded in its own log. Plan and
+  autonomous carry a work mode: plan blocks writes and asks; autonomous omits
+  `ask_user` from each run and adds guidance to decide and keep working.
 - Code mode: automatic or always writes `+codemode` into `defaultTools` with the
   smallest edit; code-mode tools choose `on` or `only`; the inline result budget
   edits `codemode.inlineBudget`.

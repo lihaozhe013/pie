@@ -4,7 +4,7 @@
 // RPC protocol does not expose: hot tool switching, work-mode entries, reload,
 // a tool/system-prompt snapshot for the settings UI, and provider sign-in.
 // The entry shapes match Pie's web UI exactly, so a session moved between the
-// clients keeps its tool selection and its Plan mode.
+// clients keeps its tool selection and its Plan or Autonomous mode.
 //
 // This file is plain JavaScript with a .ts extension: pi transpiles extensions,
 // so no build step is involved.
@@ -48,6 +48,14 @@ const PLAN_GUIDELINES = [
   "Ask before assuming. When the request is ambiguous, a trade-off matters, or a decision changes what you would build, call ask_user with one focused question and 2-3 concrete options.",
   "Ask about intent, priorities, constraints, and choices the repository cannot answer; read the code instead of asking what it contains.",
   "When the direction is settled, summarize briefly: the goal, the steps, the files involved, and the risks. Then wait for the user to leave Plan mode before implementing.",
+];
+
+// Copied from Pie's autonomous-mode extension (webui/lib/autonomous-mode-extension.ts).
+// Keep the wording in sync with the browser client.
+const AUTONOMOUS_GUIDELINES = [
+  "Autonomous mode is on: make the reasonable decision yourself instead of waiting for a person. Do not stop to ask a question; state the assumption you chose when it matters.",
+  "Work through clear low-risk next steps until the objective is actually complete. A plan, a summary, or a partial implementation is not completion.",
+  "Check the result before calling it done. When the session has an active goal, mark that goal complete only after the completion audit; otherwise report what changed and what is left.",
 ];
 
 function sortToolNames(names) {
@@ -1109,14 +1117,35 @@ export default function (pi) {
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    if (readWorkMode(ctx.sessionManager.getEntries()) !== "plan") return;
-    if (!event.systemPromptOptions || !Array.isArray(event.systemPromptOptions.promptGuidelines)) return;
-    event.systemPromptOptions.promptGuidelines.push(...PLAN_GUIDELINES);
+    const mode = readWorkMode(ctx.sessionManager.getEntries());
+    if (mode !== "plan" && mode !== "autonomous") return;
+    const options = event.systemPromptOptions;
+    if (!options) return;
+    if (Array.isArray(options.promptGuidelines)) {
+      options.promptGuidelines.push(...(mode === "plan" ? PLAN_GUIDELINES : AUTONOMOUS_GUIDELINES));
+    }
+    if (mode === "autonomous" && Array.isArray(options.selectedTools)) {
+      // Pie starts an autonomous session without the question extension. The
+      // bridge registers ask_user once for every session, so leave it out of
+      // this run's declared tools instead of reloading pi; the tool_call guard
+      // below still refuses a nested or stale call. The live active set is
+      // untouched, so leaving the mode restores the tool.
+      options.selectedTools = options.selectedTools.filter((name) => name !== ASK_USER_TOOL_NAME);
+    }
   });
 
   pi.on("tool_call", async (event, ctx) => {
-    if (!PLAN_BLOCKED.has(event.toolName)) return;
-    if (readWorkMode(ctx.sessionManager.getEntries()) !== "plan") return;
+    const mode = readWorkMode(ctx.sessionManager.getEntries());
+    if (mode === "autonomous" && event.toolName === ASK_USER_TOOL_NAME) {
+      return {
+        block: true,
+        reason:
+          'Autonomous mode does not ask the user, so "' +
+          event.toolName +
+          '" is blocked. Decide from the workspace and state your assumption in the result.',
+      };
+    }
+    if (mode !== "plan" || !PLAN_BLOCKED.has(event.toolName)) return;
     return {
       block: true,
       reason:
@@ -1308,14 +1337,17 @@ export default function (pi) {
         return;
       }
       const fs = await import("node:fs");
-      const activeTools = pi.getActiveTools();
-      const active = new Set(activeTools);
+      const workMode = readWorkMode(ctx.sessionManager.getEntries()) ?? null;
+      const active = new Set(pi.getActiveTools());
+      // Autonomous runs do not declare ask_user (see before_agent_start), so the
+      // snapshot reports what the model can actually call.
+      if (workMode === "autonomous") active.delete(ASK_USER_TOOL_NAME);
       const snapshot = {
         version: 1,
-        activeTools,
+        activeTools: [...active],
         tools: pi.getAllTools().map((tool) => ({ ...tool, active: active.has(tool.name) })),
         systemPrompt: ctx.getSystemPrompt(),
-        workMode: readWorkMode(ctx.sessionManager.getEntries()) ?? null,
+        workMode,
         toolSelection: readToolSelection(ctx.sessionManager.getEntries()) ?? null,
       };
       fs.writeFileSync(path, JSON.stringify(snapshot, null, 2), { mode: 0o600 });

@@ -70,8 +70,8 @@ func ReadToolSelection(entries []LogEntry) (ToolSelection, bool) {
 }
 
 // ReadWorkMode returns the newest valid work mode, or "" when the session has
-// none. Task modes are parsed so a plan entry behind them is not mistaken for
-// the current mode, but only plan changes terminal behavior.
+// none. Every known mode is parsed so a plan entry behind it is not mistaken
+// for the current mode; the terminal acts on plan and autonomous.
 func ReadWorkMode(entries []LogEntry) string {
 	for i := len(entries) - 1; i >= 0; i-- {
 		entry := entries[i]

@@ -1293,8 +1293,8 @@ func (m *Model) renderStatus() string {
 	if m.state.SessionName != "" {
 		left = append(left, m.styles.muted.Render(m.state.SessionName))
 	}
-	if m.currentMode == "plan" {
-		left = append(left, m.styles.accent.Render("plan"))
+	if m.currentMode == "plan" || m.currentMode == "autonomous" {
+		left = append(left, m.styles.accent.Render(m.currentMode))
 	}
 	if goal := m.goalStatusSegment(); goal != "" {
 		left = append(left, m.styles.muted.Render(goal))
@@ -1409,8 +1409,13 @@ func (m *Model) renderEditor() string {
 	if m.disconnected {
 		hint = "pi exited · ctrl+c to quit"
 	}
-	if m.currentMode == "plan" && !m.disconnected && !m.busy {
-		hint = "plan mode · writes blocked · " + hint
+	if !m.disconnected && !m.busy {
+		switch m.currentMode {
+		case "plan":
+			hint = "plan mode · writes blocked · " + hint
+		case "autonomous":
+			hint = "autonomous mode · no questions · " + hint
+		}
 	}
 	if m.ask != nil {
 		switch {

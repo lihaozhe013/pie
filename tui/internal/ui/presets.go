@@ -260,9 +260,13 @@ func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
 		return nil
 	}
 
+	// A built-in preset may carry a work mode; custom presets and the plain
+	// tool lists clear it. Plan remembers what Shift+Tab restores on exit.
 	targetMode := ""
-	if selection == "plan" {
-		targetMode = "plan"
+	if preset, ok := config.BuiltinPresetByID(selection); ok {
+		targetMode = preset.WorkMode
+	}
+	if targetMode == "plan" {
 		if current := m.currentPresetID(); current != "" && current != "plan" {
 			m.presetBeforePlan = current
 		}

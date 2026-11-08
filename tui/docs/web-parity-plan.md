@@ -26,8 +26,8 @@ browser client.
   Tools, Skills, Plugins, MCP.
 - The Models and Providers tabs reproduce Pie's model sections: General,
   Defaults, Model reasoning, and Providers.
-- Composer features match: tool presets, Plan mode, goal, model and thinking
-  selection, title generation.
+- Composer features match: tool presets, Plan and Autonomous modes, goal, model
+  and thinking selection, title generation.
 - Working directory handling matches: a project is a folder, sessions are grouped
   by folder, and a new session chooses its folder.
 - Configuration is shared, never duplicated: `settings.json`, `models.json`,
@@ -40,7 +40,7 @@ browser client.
 
 - The Settings tabs and their contents.
 - Tool presets: built-in presets, custom presets, the composer selector, Plan
-  mode, and the preset editor.
+  and Autonomous modes, and the preset editor.
 - Session title generation.
 - Goal support through a manually installed goal package.
 - Model management: providers, credentials, models, enabled-model filtering,
@@ -52,8 +52,8 @@ browser client.
 
 ### 2.2 Out of scope
 
-- The task workspace: task queue, orchestrator, autonomous preset, task
-  database, task sidebar.
+- The task workspace: task queue, orchestrator, task database, and task
+  sidebar.
 - Drag-and-drop file and image attachment.
 - Browser-only surfaces: PWA push notifications, web login/logout, fonts, font
   sizes, content width, chat minimap, Mermaid rendering.
@@ -97,7 +97,7 @@ Sizes: S under a day-equivalent, M a day-equivalent, L several, XL the largest.
 | Appearance | `components/AppearanceSettings.tsx`, `lib/theme.mts` | fixed palette | Map Pie's theme palettes to TUI themes | M |
 | Models | `components/ModelsConfig.tsx` and model sections | model picker only | New catalog layer plus four sections | XL |
 | Tools / presets | `components/ToolPresetsSettings.tsx`, `lib/tool-presets.ts`, `lib/custom-tool-presets-shared.ts` | none | Preset layer, composer selector, editor | M |
-| Plan mode | `lib/plan-mode-extension.ts`, `lib/work-mode.ts` | none | Bridge extension, matching Pie's rules | S |
+| Plan and autonomous modes | `lib/plan-mode-extension.ts`, `lib/autonomous-mode-extension.ts`, `lib/work-mode.ts` | none | Bridge extension, matching Pie's rules | S |
 | Title generation | `lib/session-title.ts`, `/api/sessions/[id]/auto-name` | manual `/name` only | One-shot `pi --print` subprocess | S |
 | Goal | `lib/goal-driver.ts`, `lib/goal-package.ts`, `components/GoalSection.tsx` | none | Read goal entries, send `/goal` commands | M |
 | Skills | `components/SkillsConfig.tsx`, `/api/skills/*` | none | Directory scanning, frontmatter toggles, `npx skills` | L |
@@ -237,11 +237,13 @@ the session log is not bloated by snapshots. The sign-in commands need the same
 out-of-band channel: a login outlives the prompt response, so its progress and
 result travel as `pie-auth ` notifications that the TUI renders as an overlay.
 
-**Plan mode parity.** The extension injects plan guidelines in
+**Plan and autonomous parity.** The extension injects plan guidelines in
 `before_agent_start` and blocks `bash`, `powershell`, `edit`, `write`, and
-`apply_patch` in `tool_call`, matching `lib/plan-mode-extension.ts`. Because the
-mode lives in the session log, a Plan session started in Pie behaves as Plan in
-the TUI and the reverse.
+`apply_patch` in `tool_call`, matching `lib/plan-mode-extension.ts`; in
+autonomous mode it adds Pie's self-directed guidelines and keeps `ask_user` out
+of the run, matching `lib/autonomous-mode-extension.ts`. Because the mode lives
+in the session log, a Plan or autonomous session started in Pie behaves the
+same in the TUI and the reverse.
 
 **Availability and fallback.** Availability is `get_commands` reporting
 `pie-tools`. If loading fails (`extension_error`) or the command is absent, the
@@ -303,17 +305,19 @@ the full suite is not run.
 
 ### P2b: Tools and presets
 
-- `internal/presets`: built-in presets (`configured`, `plan`, `chat-only`,
-  `read-only`, `default`, `full`), custom presets from `pie-tool-presets.json`,
-  Pie's validation rules (`version: 1`, at most 20, unique case-insensitive ids
-  and names, non-empty tool lists, `powershell` stored as `bash`,
-  `includeExtensions` default true).
+- `internal/presets`: built-in presets (`configured`, `plan`, `autonomous`,
+  `chat-only`, `read-only`, `default`, `full`), custom presets from
+  `pie-tool-presets.json`, Pie's validation rules (`version: 1`, at most 20,
+  unique case-insensitive ids and names, non-empty tool lists, `powershell`
+  stored as `bash`, `includeExtensions` default true).
 - Composer preset selector, key binding, and `/preset`.
 - Settings, Tools tab: built-in reference list and custom preset editor with
   per-tool toggles and availability from `/pie-publish`.
-- Plan mode: read-only tools plus the work-mode entry.
+- Plan and autonomous modes: read-only or full tools plus the work-mode entry;
+  autonomous omits `ask_user` per run and refuses a nested call.
 - Acceptance: the same `pie-tool-presets.json` is offered by both clients; a
-  preset chosen in one is reflected in the other; Plan blocks writes.
+  preset chosen in one is reflected in the other; Plan blocks writes and
+  autonomous omits `ask_user`.
 
 ### P3: Models and Providers tabs
 
@@ -433,8 +437,8 @@ the full suite is not run.
   view.
 - Online model discovery and connectivity tests: reduced to
   `pi update --models` and `pi auth check`.
-- Task workspace, queue, orchestrator, autonomous preset, and drag-and-drop:
-  out of scope by request.
+- Task workspace, queue, orchestrator, and drag-and-drop: out of scope by
+  request.
 - Mermaid diagrams and chat minimap: no terminal equivalent.
 
 ## 9. Risks
@@ -470,8 +474,9 @@ the full suite is not run.
 ## 11. Decisions
 
 - The bridge extension is included and loaded with `-e`; it is the primary
-  mechanism for tool switching, reload, Plan mode, and publishing tool and
-  system-prompt snapshots. Restart and CLI fallbacks remain.
+  mechanism for tool switching, reload, Plan and Autonomous modes, and
+  publishing tool and system-prompt snapshots. Restart and CLI fallbacks
+  remain.
 - The TUI keeps one extra preferences file, `pie-settings.json`, for
   terminal-only choices. All shared configuration stays in Pi's files.
 - Tasks, orchestration, and drag-and-drop are excluded.

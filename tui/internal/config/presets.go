@@ -40,9 +40,9 @@ type BuiltinPreset struct {
 	WorkMode    string
 }
 
-// BuiltinPresets are the presets pie offers, in dropdown order. Task-related
-// presets (autonomous, orchestrator) are intentionally absent: the terminal
-// client does not implement the task workspace.
+// BuiltinPresets are the presets pie offers, in dropdown order. The task
+// workspace and its orchestrator preset are intentionally absent: the terminal
+// client implements no task queue.
 var BuiltinPresets = []BuiltinPreset{
 	{
 		ID:          "configured",
@@ -56,6 +56,13 @@ var BuiltinPresets = []BuiltinPreset{
 		Description: "Read-only tools; the agent plans and asks instead of implementing",
 		Tools:       []string{"read", "grep", "find", "ls"},
 		WorkMode:    "plan",
+	},
+	{
+		ID:          "autonomous",
+		Name:        "autonomous",
+		Description: "Full tools; the agent decides alone and does not ask",
+		Tools:       []string{"bash", "read", "edit", "write", "grep", "find", "ls"},
+		WorkMode:    "autonomous",
 	},
 	{
 		ID:          "none",
@@ -431,11 +438,14 @@ func LookupSelection(selection string, custom []CustomPreset) (tools []string, i
 }
 
 // PresetForToolNames infers the preset a live tool selection corresponds to.
-// A work mode wins over tool names because plan and read-only share a list.
+// A work mode wins over tool names because plan and read-only share a list,
+// and autonomous and full share one too.
 func PresetForToolNames(tools []string, workMode string, custom []CustomPreset) string {
 	switch workMode {
 	case "plan":
 		return "plan"
+	case "autonomous":
+		return "autonomous"
 	}
 	canonical := func(names []string) string {
 		parts := make([]string, 0, len(names))

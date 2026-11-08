@@ -216,9 +216,9 @@ registers `/pie-tools`, `/pie-mode`, `/pie-reload`, `/pie-publish`, and the
 provider commands described below; the UI
 drives them with ordinary `prompt` commands. Tool selections and work modes are
 written as the same session entries Pie uses, so a session moved between the
-clients keeps its preset and its Plan mode. If the extension fails to load, the
-UI reports `unavailable` in Settings › General and refuses preset changes
-rather than silently diverging.
+clients keeps its preset and its Plan or Autonomous mode. If the extension
+fails to load, the UI reports `unavailable` in Settings › General and refuses
+preset changes rather than silently diverging.
 
 The bridge also registers the `ask_user` tool. It reuses the extension dialog
 channel: a question is a `select` whose last option is the
@@ -232,6 +232,15 @@ tool result as the web client. A prompt draft present when the question arrives
 is stashed and restored when it closes. An open question sends only the
 sentinel, and other hosts keep the normal select -> input fallback. No new RPC
 command or session entry is involved.
+
+Autonomous uses the same entry with the opposite rule. The mode selects the
+full coding tools, the bridge adds Pie's self-directed guidelines before each
+run, and `ask_user` is left out of that run's declared tools. Pie starts an
+autonomous session without the question extension; the bridge registers the
+tool once for every session, so it hides the declaration for the run instead of
+reloading pi, and a nested or stale call is refused with a reason. The live
+active set keeps the tool for the modes that allow questions. The mode does not
+start or drive a goal: `/goal` and the installed goal package keep that role.
 
 Provider sign-in is bridged the same way. `pi --mode rpc` has no provider list,
 login, or logout command, and `get_available_models` only reports providers
@@ -291,7 +300,8 @@ the row in place, so deleting several sessions in a row needs no reopen.
 
 `/context` is fed by `/pie-publish`, not by the UI guessing: the bridge reads
 `getActiveTools`, `getAllTools`, `getSystemPrompt`, and the session's work mode,
-and marks each tool active at publish time. The panel lists the tools, offers
+and marks each tool active at publish time; autonomous mode hides `ask_user`
+there too, because the run does not declare it. The panel lists the tools, offers
 the system prompt through `$PAGER`, and refreshes on demand. A leadership
 without the bridge shows why instead of an empty list. Tool presets and Plan
 mode refuse with the reason as well: the binary always embeds the bridge, and

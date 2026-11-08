@@ -65,8 +65,8 @@ subagents, no second agent loop, no parallel protocol.
   Pie web UI and a `/` search that jumps across every tab, sharing pi's files:
   `settings.json`, `models.json`, `AGENTS.md`, and the `pie-*` companion files
   in the agent directory
-- Tool presets (`/preset`): the built-in configured, plan, chat-only,
-  read-only, default, and full sets, plus custom presets stored in
+- Tool presets (`/preset`): the built-in configured, plan, autonomous,
+  chat-only, read-only, default, and full sets, plus custom presets stored in
   `pie-tool-presets.json` and editable from Settings › Tools. The last preset
   is remembered in the terminal-only preferences and reused for new sessions;
   a resumed session keeps its own recorded selection
@@ -94,8 +94,9 @@ subagents, no second agent loop, no parallel protocol.
 - A statistics panel from `/stats` with message counts, a token breakdown,
   cost, context usage, and the session file, refreshed while it is open
 - Plan mode shows a `plan` chip in the header and a "writes blocked" hint;
-  project MCP and package writes follow pi's `trust.json`, inherited from a
-  parent folder, and refuse to edit untrusted project resources
+  autonomous mode shows its own chip and omits `ask_user` from the run; project
+  MCP and package writes follow pi's `trust.json`, inherited from a parent
+  folder, and refuse to edit untrusted project resources
 - An unnamed session is titled automatically from its first accepted prompt,
   with retries when the first turn settles (even if it was aborted), and from
   history when it is resumed, attached, forked, or cloned. The generation runs
@@ -135,8 +136,8 @@ subagents, no second agent loop, no parallel protocol.
 - Pie's 18 color themes, applied instantly and saved to the terminal-only
   preferences file
 - A bundled bridge extension (loaded with `-e`) that adds hot tool switching,
-  Plan mode, the `ask_user` question tool, and reload over RPC, using the same
-  `pie:*` session entries as the web UI
+  Plan and Autonomous modes, the `ask_user` question tool, and reload over RPC,
+  using the same `pie:*` session entries as the web UI
 - An inline `ask_user` panel: the question and up to six options sit above the
   prompt with the conversation still on screen, and the prompt itself answers
   with free-form text; choosing and typing both reply in one step
