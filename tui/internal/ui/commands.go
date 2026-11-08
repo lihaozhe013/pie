@@ -22,6 +22,8 @@ var builtinCommandTable = []builtinCommand{
 	{Name: "/settings", Detail: "open settings", Aliases: []string{"/config", "/prefs"}},
 	{Name: "/preset", Detail: "change the tool preset", Aliases: []string{"/tools"}},
 	{Name: "/model", Detail: "switch model", Aliases: []string{"/models"}},
+	{Name: "/login", Detail: "sign in to a provider"},
+	{Name: "/logout", Detail: "sign out of a provider"},
 	{Name: "/think", Detail: "cycle thinking level"},
 	{Name: "/new", Detail: "start a new session"},
 	{Name: "/resume", Detail: "resume another session", Aliases: []string{"/continue", "/sessions"}},

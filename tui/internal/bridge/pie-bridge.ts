@@ -2,9 +2,9 @@
 //
 // pie loads this file with `pi -e`. It supplies the runtime commands the
 // RPC protocol does not expose: hot tool switching, work-mode entries, reload,
-// and a tool/system-prompt snapshot for the settings UI. The entry shapes match
-// Pie's web UI exactly, so a session moved between the clients keeps its tool
-// selection and its Plan mode.
+// a tool/system-prompt snapshot for the settings UI, and provider sign-in.
+// The entry shapes match Pie's web UI exactly, so a session moved between the
+// clients keeps its tool selection and its Plan mode.
 //
 // This file is plain JavaScript with a .ts extension: pi transpiles extensions,
 // so no build step is involved.
@@ -26,6 +26,14 @@ const PLAN_BLOCKED = new Set([
   "str_replace",
   "create_file",
 ]);
+
+// Auth marker prefixed to an extension notification. pie parses the JSON body
+// and renders its own overlay; every other notify stays a plain toast.
+const AUTH_NOTIFY_PREFIX = "pie-auth ";
+
+// One in-flight login per provider, so a second command cannot start a second
+// flow against the same credential.
+const activeLogins = new Map();
 
 const PLAN_GUIDELINES = [
   "Plan mode is on: this is a read-only conversation. Explore the workspace freely, but do not modify files or run commands that change anything — the write and shell tools are blocked.",
@@ -90,6 +98,268 @@ function readWorkMode(entries) {
 function activeExtensionTools(active) {
   const builtin = new Set(BUILTIN_TOOLS);
   return active.filter((name) => !builtin.has(name));
+}
+
+function authNotify(ctx, providerId, payload) {
+  ctx.ui.notify(AUTH_NOTIFY_PREFIX + JSON.stringify({ provider: providerId, ...payload }), payload.ok === false ? "error" : "info");
+}
+
+function cancelledError() {
+  return new Error("Login cancelled");
+}
+
+// Race a dialog against the prompt's abort signal. A login flow races a manual
+// code prompt against its callback server, and the losing prompt must not keep
+// the flow waiting.
+function raceAbort(promise, signal) {
+  if (!signal) return promise;
+  if (signal.aborted) return Promise.reject(cancelledError());
+  return new Promise((resolve, reject) => {
+    const onAbort = () => reject(cancelledError());
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function providerAuthMethods(provider) {
+  const apiKey = provider?.auth?.apiKey;
+  const oauth = provider?.auth?.oauth;
+  return {
+    apiKey: apiKey ? { name: apiKey.name || "", login: typeof apiKey.login === "function" } : null,
+    oauth: oauth
+      ? {
+          name: oauth.name || "",
+          subscription: oauth.isSubscription === true,
+          loginLabel: oauth.loginLabel || "",
+        }
+      : null,
+  };
+}
+
+function authStatusSnapshot(status) {
+  if (!status) return null;
+  return {
+    configured: status.configured === true,
+    source: status.source || "",
+    label: status.label || "",
+  };
+}
+
+function providerIds(ctx) {
+  const ids = new Set();
+  try {
+    for (const model of ctx.modelRegistry.getAll()) {
+      if (model && model.provider) ids.add(model.provider);
+    }
+  } catch {
+    // A broken catalog must not empty the provider list.
+  }
+  try {
+    for (const id of ctx.modelRegistry.getRegisteredProviderIds()) ids.add(id);
+  } catch {
+    // Older registries had no extension provider listing.
+  }
+  // The runtime's own set also covers providers that currently expose no chat
+  // model; it is an internal field, so keep it optional.
+  try {
+    const runtimeIds = ctx.modelRegistry.runtime?.providerIds?.();
+    if (runtimeIds) for (const id of runtimeIds) ids.add(id);
+  } catch {
+    // Optional path.
+  }
+  return [...ids].filter((id) => typeof id === "string" && id !== "").sort();
+}
+
+function loginInteraction(ctx, providerId, flowSignal) {
+  return {
+    signal: flowSignal,
+    prompt: async (prompt) => {
+      // pi resolves a dialog with undefined when its signal aborts, which is how
+      // a prompt that lost a race is cleaned up instead of dangling.
+      const signal = prompt.signal ?? flowSignal;
+      const opts = signal ? { signal } : undefined;
+      if (prompt.type === "select") {
+        const labels = prompt.options.map((option) =>
+          option.description ? option.label + " — " + option.description : option.label,
+        );
+        const picked = await raceAbort(ctx.ui.select(prompt.message, labels, opts), signal);
+        if (picked === undefined) throw cancelledError();
+        const index = labels.indexOf(picked);
+        const option = prompt.options[index] || prompt.options.find((entry) => entry.label === picked);
+        return option ? option.id : picked;
+      }
+      const value = await raceAbort(ctx.ui.input(prompt.message, prompt.placeholder, opts), signal);
+      if (value === undefined) throw cancelledError();
+      return prompt.type === "manual_code" ? value.trim() : value;
+    },
+    notify: (event) => {
+      if (event.type === "auth_url") {
+        authNotify(ctx, providerId, {
+          kind: "url",
+          url: event.url,
+          instructions: event.instructions || "",
+        });
+      } else if (event.type === "device_code") {
+        authNotify(ctx, providerId, {
+          kind: "device",
+          code: event.userCode,
+          url: event.verificationUri,
+          expiresIn: event.expiresInSeconds || 0,
+        });
+      } else if (event.type === "info") {
+        authNotify(ctx, providerId, {
+          kind: "info",
+          message: event.message || "",
+          links: Array.isArray(event.links) ? event.links : [],
+        });
+      } else {
+        authNotify(ctx, providerId, { kind: "progress", message: event.message || "" });
+      }
+    },
+  };
+}
+
+// Login options carry the installation ID providers use as a stable client
+// identity. The setting is shared with pi itself, so read and write the same
+// file through the SDK rather than inventing a second ID.
+async function loginOptions() {
+  try {
+    const { SettingsManager, getAgentDir } = await import("@earendil-works/pi-coding-agent");
+    const agentDir = getAgentDir();
+    const settings = SettingsManager.create(agentDir, agentDir, { projectTrusted: false });
+    return { getDeviceId: () => settings.getOrCreateDeviceId() };
+  } catch {
+    return {};
+  }
+}
+
+// The host runtime owns the session's credential state, so a login through it
+// needs no follow-up reload. It is an internal field; when it is missing, a
+// second runtime that shares auth.json performs the same flow and the host is
+// refreshed afterwards.
+async function performLogin(ctx, provider, type, interaction, options) {
+  const hostRuntime = ctx.modelRegistry.runtime;
+  if (hostRuntime && typeof hostRuntime.login === "function") {
+    return await hostRuntime.login(provider.id, type, interaction, options);
+  }
+  const { ModelRuntime, getAgentDir } = await import("@earendil-works/pi-coding-agent");
+  const path = await import("node:path");
+  const runtime = await ModelRuntime.create({
+    authPath: path.join(getAgentDir(), "auth.json"),
+    refreshOnCreate: false,
+    allowModelNetwork: false,
+  });
+  if (!runtime.getProvider(provider.id)) runtime.registerNativeProvider(provider);
+  return await runtime.login(provider.id, type, interaction, options);
+}
+
+async function refreshProvider(ctx, providerId) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15_000);
+  try {
+    await ctx.modelRegistry.refresh({ providers: [providerId], allowNetwork: true, signal: controller.signal });
+    return true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function authMethod(provider, type) {
+  const methods = providerAuthMethods(provider);
+  return type === "oauth" ? methods.oauth : methods.apiKey;
+}
+
+async function startLogin(ctx, providerId, requestedType) {
+  const provider = ctx.modelRegistry.getProvider(providerId);
+  if (!provider) {
+    authNotify(ctx, providerId, { kind: "done", ok: false, message: "unknown provider: " + providerId });
+    return;
+  }
+  const controller = new AbortController();
+  activeLogins.set(providerId, { controller });
+  const name = provider.name || providerId;
+  try {
+    const methods = providerAuthMethods(provider);
+    const oauthLabel = methods.oauth ? methods.oauth.loginLabel || methods.oauth.name || "Sign in with an account" : "";
+    const apiKeyLabel = methods.apiKey ? methods.apiKey.name || "Sign in with an API key" : "";
+
+    let type = requestedType;
+    if (type !== "oauth" && type !== "api_key") {
+      if (!methods.oauth) type = "api_key";
+      else if (!methods.apiKey) type = "oauth";
+      else {
+        const picked = await ctx.ui.select("Sign in to " + name, [oauthLabel, apiKeyLabel], {
+          signal: controller.signal,
+        });
+        if (picked === undefined) {
+          authNotify(ctx, providerId, { kind: "done", ok: false, cancelled: true, message: "sign-in cancelled" });
+          return;
+        }
+        type = picked === apiKeyLabel ? "api_key" : "oauth";
+      }
+    }
+
+    const method = authMethod(provider, type);
+    const usable = type === "oauth" ? Boolean(method) : Boolean(method && method.login);
+    if (!usable) {
+      const reason = type === "oauth" ? "does not support OAuth sign-in" : "does not support API key sign-in";
+      authNotify(ctx, providerId, { kind: "done", ok: false, message: name + " " + reason });
+      return;
+    }
+
+    ctx.ui.setStatus("pie-auth", "Signing in to " + name + "…");
+    const options = await loginOptions();
+    const interaction = loginInteraction(ctx, providerId, controller.signal);
+    const credential = await performLogin(ctx, provider, type, interaction, options);
+    const refreshed = await refreshProvider(ctx, providerId);
+    authNotify(ctx, providerId, {
+      kind: "done",
+      ok: true,
+      authType: type,
+      credentialType: credential && credential.type ? credential.type : type,
+      refreshed,
+      message: type === "oauth" ? "signed in" : "API key saved",
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const cancelled = /cancel/i.test(message) || controller.signal.aborted;
+    authNotify(ctx, providerId, {
+      kind: "done",
+      ok: false,
+      cancelled,
+      message: cancelled ? "sign-in cancelled" : message,
+    });
+  } finally {
+    activeLogins.delete(providerId);
+    ctx.ui.setStatus("pie-auth", undefined);
+  }
+}
+
+async function performLogout(ctx, providerId) {
+  const hostRuntime = ctx.modelRegistry.runtime;
+  if (hostRuntime && typeof hostRuntime.logout === "function") {
+    await hostRuntime.logout(providerId);
+    return;
+  }
+  const { ModelRuntime, getAgentDir } = await import("@earendil-works/pi-coding-agent");
+  const path = await import("node:path");
+  const runtime = await ModelRuntime.create({
+    authPath: path.join(getAgentDir(), "auth.json"),
+    refreshOnCreate: false,
+    allowModelNetwork: false,
+  });
+  await runtime.logout(providerId);
 }
 
 function applyToolSelection(pi, selection) {
@@ -166,6 +436,121 @@ export default function (pi) {
     description: "Reload pi resources (pie internal)",
     handler: async (_args, ctx) => {
       await ctx.reload();
+    },
+  });
+
+  pi.registerCommand("pie-providers", {
+    description: "Write the provider and auth snapshot (pie internal)",
+    handler: async (args, ctx) => {
+      const path = String(args || "").trim();
+      if (!path || path.includes("\n")) {
+        ctx.ui.notify("pie-providers: expected a file path", "error");
+        return;
+      }
+      const fs = await import("node:fs");
+      const counts = new Map();
+      try {
+        for (const model of ctx.modelRegistry.getAll()) {
+          counts.set(model.provider, (counts.get(model.provider) || 0) + 1);
+        }
+      } catch {
+        // Keep the provider list even when the catalog cannot be read.
+      }
+      const providers = [];
+      for (const id of providerIds(ctx)) {
+        const provider = ctx.modelRegistry.getProvider(id);
+        if (!provider) continue;
+        const methods = providerAuthMethods(provider);
+        let status = null;
+        try {
+          status = authStatusSnapshot(ctx.modelRegistry.getProviderAuthStatus(id));
+        } catch {
+          status = null;
+        }
+        providers.push({
+          id,
+          name: provider.name || id,
+          apiKey: methods.apiKey,
+          oauth: methods.oauth,
+          status,
+          modelCount: counts.get(id) || 0,
+        });
+      }
+      fs.writeFileSync(path, JSON.stringify({ version: 1, providers }, null, 2), { mode: 0o600 });
+    },
+  });
+
+  pi.registerCommand("pie-login", {
+    description: "Sign in to a provider (pie internal)",
+    handler: async (args, ctx) => {
+      const [providerId, requestedType] = String(args || "").trim().split(/\s+/);
+      if (!providerId) {
+        ctx.ui.notify("pie-login: expected a provider id", "error");
+        return;
+      }
+      if (activeLogins.has(providerId)) {
+        authNotify(ctx, providerId, {
+          kind: "progress",
+          message: "a sign-in for this provider is already running",
+        });
+        return;
+      }
+      // The login takes minutes and pi waits for a command handler before it
+      // answers the prompt, so the flow runs detached and reports through the
+      // extension UI instead of holding the RPC response open.
+      void startLogin(ctx, providerId, requestedType).catch((error) => {
+        activeLogins.delete(providerId);
+        authNotify(ctx, providerId, {
+          kind: "done",
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+  });
+
+  pi.registerCommand("pie-auth-cancel", {
+    description: "Cancel a provider sign-in (pie internal)",
+    handler: async (args, ctx) => {
+      const providerId = String(args || "").trim();
+      const entry = activeLogins.get(providerId);
+      if (!entry) return;
+      entry.controller.abort(cancelledError());
+      authNotify(ctx, providerId, { kind: "progress", message: "cancelling sign-in…" });
+    },
+  });
+
+  pi.registerCommand("pie-logout", {
+    description: "Sign out of a provider (pie internal)",
+    handler: async (args, ctx) => {
+      const providerId = String(args || "").trim();
+      if (!providerId) {
+        ctx.ui.notify("pie-logout: expected a provider id", "error");
+        return;
+      }
+      const provider = ctx.modelRegistry.getProvider(providerId);
+      const name = provider?.name || providerId;
+      if (activeLogins.has(providerId)) {
+        authNotify(ctx, providerId, { kind: "done", ok: false, message: "finish the sign-in before signing out" });
+        return;
+      }
+      try {
+        await performLogout(ctx, providerId);
+        const refreshed = await refreshProvider(ctx, providerId);
+        authNotify(ctx, providerId, {
+          kind: "done",
+          ok: true,
+          signedOut: true,
+          refreshed,
+          message: "signed out of " + name,
+        });
+      } catch (error) {
+        authNotify(ctx, providerId, {
+          kind: "done",
+          ok: false,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     },
   });
 

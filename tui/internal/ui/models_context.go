@@ -27,6 +27,9 @@ func (m *Model) openContextProvidersPanel() {
 		Help: "A model with a larger native window than the global cap still shows the cap; this override changes the model itself.",
 	}}
 	for _, provider := range m.catalog.Providers {
+		if len(provider.Models) == 0 {
+			continue
+		}
 		provider := provider
 		rows = append(rows, settingsRow{
 			ID:    "context-" + provider.ID,

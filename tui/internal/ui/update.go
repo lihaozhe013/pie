@@ -853,6 +853,12 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		return nil, false
 	}
 
+	// A future pi may expose sign-in over RPC. When it does, its own command
+	// wins: this client's version only bridges the gap until then.
+	if (name == "/login" || name == "/logout") && m.piOwns(name) {
+		return nil, false
+	}
+
 	target, known := builtinIndex[name]
 	if !known || (target.alias && m.piOwns(name)) {
 		return nil, false
@@ -878,6 +884,10 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 			return m.setModelByLabel(argument), true
 		}
 		return m.openModelPicker(), true
+	case "/login":
+		return m.openLoginPicker(argument), true
+	case "/logout":
+		return m.openLogoutPicker(), true
 	case "/think":
 		if argument != "" {
 			level := strings.ToLower(argument)
@@ -1726,6 +1736,13 @@ func (m *Model) refreshState() tea.Cmd {
 
 // handleExtensionUI reacts to an extension UI subprotocol record.
 func (m *Model) handleExtensionUI(request *rpc.ExtensionUIRequestEvent) (tea.Model, tea.Cmd) {
+	// Sign-in state travels as one prefixed notification because the RPC UI
+	// protocol has no richer channel; everything else stays a plain toast.
+	if request.Method == "notify" {
+		if payload, ok := parseAuthNotify(request.Message); ok {
+			return m, tea.Batch(m.applyAuthNotify(payload), m.waitEvent())
+		}
+	}
 	switch request.Method {
 	case "notify":
 		m.setToast(request.Message)
@@ -1747,11 +1764,21 @@ func (m *Model) handleExtensionUI(request *rpc.ExtensionUIRequestEvent) (tea.Mod
 		m.completion.Refresh(m.composer.Value())
 		m.layout()
 	case "select", "confirm", "input", "editor":
-		if m.overlay != nil {
-			m.dialogs = append(m.dialogs, request)
+		if m.overlay == nil {
+			m.openExtensionOverlay(request)
 			return m, m.waitEvent()
 		}
-		m.openExtensionOverlay(request)
+		// A sign-in prompt has to be visible or the flow cannot proceed, so it
+		// takes over the settings panel and returns there when answered.
+		if m.authFlow != "" && m.overlay.kind == overlaySettings {
+			previous := m.overlay
+			m.openExtensionOverlay(request)
+			if m.overlay != nil && m.overlay.requestID != "" {
+				m.overlay.returnTo = previous
+			}
+			return m, m.waitEvent()
+		}
+		m.dialogs = append(m.dialogs, request)
 	}
 	return m, m.waitEvent()
 }
@@ -1787,8 +1814,24 @@ func (m *Model) openOverlay(o *overlay) {
 }
 
 func (m *Model) closeOverlay() {
+	// A picker opened from a settings panel goes back to it, so signing in
+	// from the panel returns where the user was. A queued dialog wins: it is
+	// waiting for the user and must not stay hidden.
+	if m.overlay != nil && m.overlay.returnTo != nil && len(m.dialogs) == 0 {
+		previous := m.overlay.returnTo
+		m.overlay.returnTo = nil
+		m.openOverlay(previous)
+		return
+	}
 	m.overlay = nil
 	m.layout()
+	// A sign-in step that arrived behind a dialog is shown now.
+	if m.pendingAuthStep != nil {
+		step := m.pendingAuthStep
+		m.pendingAuthStep = nil
+		m.openOverlay(step)
+		return
+	}
 	if len(m.dialogs) > 0 {
 		next := m.dialogs[0]
 		m.dialogs = m.dialogs[1:]
@@ -1803,6 +1846,23 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	key := msg.String()
 	o := m.overlay
+
+	if o.kind == overlayAuth {
+		switch key {
+		case "ctrl+c":
+			return m, tea.Quit
+		case "esc", "q":
+			m.closeOverlay()
+		case "o", "enter":
+			return m, m.openAuthURL()
+		case "c":
+			return m, m.copyAuthValue()
+		case "ctrl+x":
+			m.setToast("cancelling the sign-in…")
+			return m, m.cancelProviderLogin(o.authProvider)
+		}
+		return m, nil
+	}
 
 	switch key {
 	case "esc":
@@ -1925,6 +1985,13 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 			return m.switchProject(item.Value)
 		case "palette":
 			return m.runPaletteItem(item.Value)
+		case "login":
+			m.closeOverlay()
+			providerID, authType, _ := strings.Cut(item.Value, "|")
+			return m.startProviderLogin(providerID, authType)
+		case "logout":
+			m.closeOverlay()
+			return m.startProviderLogout(item.Value)
 		case "settings-jump":
 			m.closeOverlay()
 			return m.applySettingsJump(item.Value)

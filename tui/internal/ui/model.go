@@ -179,6 +179,22 @@ type (
 		err      error
 	}
 
+	providerAuthMsg struct {
+		providers map[string]*modelcatalog.ProviderAuth
+		err       error
+	}
+
+	providerAuthCommandMsg struct {
+		action   string
+		provider string
+		err      error
+	}
+
+	availableModelsMsg struct {
+		models []rpc.ModelInfo
+		err    error
+	}
+
 	presetAppliedMsg struct {
 		selection string
 		quiet     bool
@@ -265,8 +281,25 @@ type Model struct {
 	trustErr       error
 
 	// bridgeReady reports whether pi loaded pie's bridge extension, which
-	// provides hot tool switching, work modes, and reload.
+	// provides hot tool switching, work modes, reload, and provider sign-in.
 	bridgeReady bool
+
+	// providerAuth is the bridge's provider sign-in snapshot. It also lists
+	// providers with no credential, which the RPC model list cannot report.
+	providerAuth    map[string]*modelcatalog.ProviderAuth
+	providerAuthErr error
+	// authFlow is the provider whose sign-in is running, so its panel can
+	// offer a cancel and its dialogs are cleared when the flow ends.
+	authFlow string
+	// panelProvider is the provider whose detail panel is open, so a sign-in
+	// result can rebuild it with the new credential state.
+	panelProvider string
+	// pendingAuthStep is a sign-in step that arrived while a dialog was open;
+	// it is shown once that dialog closes.
+	pendingAuthStep *overlay
+	// pendingModelPick asks the next available-model reply to adopt the
+	// provider's first model when the session has none yet.
+	pendingModelPick string
 
 	// pendingPrompt is the optimistic user block for the prompt in flight, so
 	// a command handled by an extension can take it back.
@@ -463,6 +496,7 @@ func (m *Model) reloadCatalog() {
 		})
 	}
 	catalog.MergeRuntime(runtime)
+	catalog.MergeAuth(m.providerAuth)
 	m.catalog = catalog
 	m.catalogErr = nil
 	m.refreshEnabledModels()
@@ -566,6 +600,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.disconnected = true
 		m.busy = false
+		m.authFlow = ""
 		m.activity.reset()
 		m.layout()
 		tail := strings.Join(m.client.StderrTail(), "\n")
@@ -663,7 +698,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.overlay != nil && m.overlay.action == "settings" {
 			m.openSettingsOverlay()
 		}
-		return m, tea.Batch(m.refreshState(), m.refreshCommands(), m.loadEntries(), m.loadToolSnapshot())
+		return m, tea.Batch(m.refreshState(), m.refreshCommands(), m.loadEntries(), m.loadToolSnapshot(), m.loadProviderAuth())
 
 	case commandsMsg:
 		if msg.err != nil {
@@ -673,10 +708,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.bridgeReady = m.hasPiCommand("pie-tools")
 		m.goalAvailable = m.hasPiCommand("goal")
 		m.completion.SetItems(m.commandItems())
+		commands := []tea.Cmd{m.loadProviderAuth()}
 		if cmd := m.restoreSavedPreset(); cmd != nil {
-			return m, cmd
+			commands = append(commands, cmd)
 		}
-		return m, nil
+		return m, tea.Batch(commands...)
 
 	case providerCheckMsg:
 		m.setToast(providerCheckSummary(msg))
@@ -774,6 +810,40 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 		return m, nil
+
+	case providerAuthMsg:
+		if msg.err != nil {
+			m.providerAuthErr = msg.err
+			return m, nil
+		}
+		m.providerAuth = msg.providers
+		m.providerAuthErr = nil
+		m.reloadCatalog()
+		m.refreshAuthPanels()
+		return m, nil
+
+	case openURLMsg:
+		if msg.err != nil {
+			m.setToast("open browser: " + msg.err.Error())
+		}
+		return m, nil
+
+	case providerAuthCommandMsg:
+		if msg.err != nil {
+			if msg.action == "login" {
+				m.authFlow = ""
+			}
+			m.addError(msg.err.Error())
+		}
+		return m, nil
+
+	case availableModelsMsg:
+		if msg.err != nil {
+			return m, nil
+		}
+		m.models = msg.models
+		m.reloadCatalog()
+		return m, m.adoptPendingModel()
 
 	case snapshotMsg:
 		if msg.err != nil {
@@ -985,6 +1055,9 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 		m.transcript.Add(newBlock(blockNotice, "attached to a running turn"))
 		m.autoTitlePending = m.state.SessionName == ""
 		commands := []tea.Cmd{m.scheduleTick(), m.loadEntries()}
+		if m.bridgeReady {
+			commands = append(commands, m.loadProviderAuth())
+		}
 		if cmd := m.autoTitleFromHistory(msg.history); cmd != nil {
 			commands = append(commands, cmd)
 		}
@@ -992,6 +1065,9 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	commands := []tea.Cmd{m.loadEntries()}
+	if m.bridgeReady {
+		commands = append(commands, m.loadProviderAuth())
+	}
 	if cmd := m.autoTitleFromHistory(msg.history); cmd != nil {
 		commands = append(commands, cmd)
 	}

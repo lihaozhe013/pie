@@ -194,10 +194,14 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 		})
 		rows = append(rows, settingsRow{
 			ID:    "provider-remove-credential",
-			Label: "Remove credential",
+			Label: "Sign out",
 			Kind:  settingsAction,
 			Help:  "Deletes the stored API key or OAuth credential for this provider.",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
+				if m.bridgeReady {
+					s.notice = "signing out…"
+					return m.startProviderLogout(draft.ID)
+				}
 				auth, err := config.LoadAuth(m.paths)
 				if err != nil {
 					s.err = err.Error()

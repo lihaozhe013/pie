@@ -127,7 +127,7 @@ The TUI must use this one root for every path and must not keep a second copy.
 | `pie-tool-presets.json` | Custom tool presets (Pie-owned) | Read/write |
 | `AGENTS.md` | Global instructions | Read/write |
 | `mcp.json` and `.pi/mcp.json` | MCP servers, global and project | Read/write; project file requires trust |
-| `auth.json` | Provider credentials | Read all; write API keys only |
+| `auth.json` | Provider credentials | Read all; write API keys directly, and every method through the bridge extension |
 | `models-store.json` | Provider model catalog cache | Read; refresh through `pi update --models` |
 | `pie-session-state.json` | Sidebar pins, archive, project order and names | Optional read later; not required for parity targets |
 | Session `.jsonl` entries | `pie:tool-selection`, `pie:work-mode`, goal entries | Read; write through the bridge extension |
@@ -182,6 +182,7 @@ Work that Pi's CLI can do outside a session runs as a child process:
 | --- | --- |
 | Refresh model catalog | `pi update --models` |
 | Provider readiness | `pi auth check --provider <id> --json` |
+| Provider list, sign-in, sign-out | `/pie-providers`, `/pie-login`, `/pie-logout` in the bridge extension |
 | MCP listing and testing | `pi mcp list --json` |
 | MCP sign-in and sign-out | `pi mcp login <server>` / `pi mcp logout <server>` |
 | Package install, remove, update | `pi install` / `pi remove` / `pi update --extensions` |
@@ -218,9 +219,15 @@ coexist.
 | `/pie-mode plan\|none` | Append `pie:work-mode` `{version:1, mode}` |
 | `/pie-reload` | `ctx.reload()` |
 | `/pie-publish <path>` | Write `getAllTools()` and `ctx.getSystemPrompt()` as JSON for the TUI to read |
+| `/pie-providers <path>` | Write every provider with its auth methods, status, and model count as JSON |
+| `/pie-login <provider> [oauth\|api_key]` | Run pi's own `ModelRuntime.login` detached and report through `pie-auth ` notifications |
+| `/pie-auth-cancel <provider>` | Abort the running sign-in through its abort signal |
+| `/pie-logout <provider>` | Delete the stored credential and refresh the provider's models |
 
 `/pie-publish` writes to a caller-supplied path instead of appending entries, so
-the session log is not bloated by snapshots.
+the session log is not bloated by snapshots. The sign-in commands need the same
+out-of-band channel: a login outlives the prompt response, so its progress and
+result travel as `pie-auth ` notifications that the TUI renders as an overlay.
 
 **Plan mode parity.** The extension injects plan guidelines in
 `before_agent_start` and blocks `bash`, `powershell`, `edit`, `write`, and
@@ -313,9 +320,10 @@ the full suite is not run.
     catalog refresh through `pi update --models`.
   - Model reasoning: per-model `modelThinkingLevels` with the supported levels
     from the catalog.
-  - Providers: OAuth providers (status only), API-key providers (readiness via
-    `pi auth check`, key write to `auth.json`), and custom providers with their
-    models, all with add, edit, reorder, and delete.
+  - Providers: every provider with its OAuth and API-key methods and sign-in
+    state, API-key readiness via `pi auth check`, sign-in and sign-out through
+    the bridge extension, and custom providers with their models, all with
+    add, edit, reorder, and delete.
 - Session model picker honors enabled models, per-model reasoning defaults, and
   the context limit.
 - Acceptance: changes written by the TUI appear in Pie's Models panel and the
@@ -408,9 +416,9 @@ the full suite is not run.
 - General language switching, PWA push, and web login/logout: not applicable.
   Quote-selection, transcript tool cards, and side-by-side diff become terminal
   equivalents only: ctrl+o expands tool output and diffs in place.
-- Provider OAuth sign-in and subscription usage/quota: no RPC or CLI surface.
-  The TUI shows stored credential state and directs the user to sign in with
-  `pi` or Pie.
+- Provider sign-in is bridged through the extension, so the TUI runs the same
+  OAuth and API-key flows as Pie and writes the same `auth.json`. Subscription
+  usage and quota still have no surface: the panel shows credential state only.
 - Online model discovery and connectivity tests: reduced to
   `pi update --models` and `pi auth check`.
 - Task workspace, queue, orchestrator, autonomous preset, and drag-and-drop:

@@ -200,6 +200,8 @@ memory from other CLIs keeps working.
 | `/settings` | `/config`, `/prefs` | open the settings panel; `/settings models` opens a tab |
 | `/preset` | `/tools` | change the tool preset (`/preset plan`, `/preset configured`, or a custom name) |
 | `/model` | `/models` | switch model |
+| `/login` | | sign in to a provider with OAuth or an API key |
+| `/logout` | | sign out of a provider and delete its stored credential |
 | `/think` | | cycle the thinking level |
 | `/new` | | start a new session |
 | `/resume` | `/continue`, `/sessions` | resume another session |

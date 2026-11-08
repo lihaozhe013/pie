@@ -208,6 +208,18 @@ clients keeps its preset and its Plan mode. If the extension fails to load, the
 UI reports `unavailable` in Settings › General and refuses preset changes
 rather than silently diverging.
 
+Provider sign-in is bridged the same way. `pi --mode rpc` has no provider list,
+login, or logout command, and `get_available_models` only reports providers
+that already have a credential, so the extension registers `/pie-providers`,
+`/pie-login`, `/pie-auth-cancel`, and `/pie-logout`. The credential is written
+by pi's own `ModelRuntime.login`, which keeps every OAuth flow, device code, and
+the `auth.json` shape inside pi; the TUI never reimplements one. A login runs
+detached and reports through `pie-auth ` notifications, because pi waits for a
+command handler before it answers the prompt and a browser login can take
+minutes. The UI turns those notifications into an overlay with the
+verification URL or device code, and refreshes the provider snapshot and
+available models when the flow ends.
+
 `pi --mode rpc` does not persist the model or thinking level it changes, so
 `pie` writes them itself: picking a model updates `defaultProvider` and
 `defaultModel`, and a thinking-level change updates the current model's

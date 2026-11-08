@@ -52,8 +52,21 @@ Four sections share `models.json`, `settings.json`, `auth.json`,
 - Per-model thinking levels: `modelThinkingLevels` for the session model picker.
 - Per-model context windows: writes `providers.<id>.modelOverrides.<model>.contextWindow`
   in `models.json`, keeping other override keys and removing empty objects.
-- Providers: credential state, `pi auth check` readiness, API keys, and custom
+- Providers: every built-in provider, including ones with no credential yet,
+  with its sign-in state, `pi auth check` readiness, API keys, and custom
   providers and models with compatibility endpoints and costs.
+
+Provider sign-in runs through the bridge extension, so the OAuth flows and
+`auth.json` writes are pi's own. `Sign in to a provider` in the Models tab and
+`/login` list every provider and the methods it offers; a provider that
+supports both appears once as OAuth and once as API key. `/logout` and the
+panel's `Sign out` delete a stored credential. While a flow runs, the TUI shows
+the verification URL or device code in an overlay: `o` or `enter` opens the
+page in the platform browser, `c` copies the code or URL, `ctrl+x` cancels the
+flow, and `esc` hides the overlay without cancelling. A finished sign-in
+refreshes the provider list and
+the available models, and a session with no model adopts the new provider's
+first one.
 
 The cap also feeds the context meter in the header and `/stats`: a model with a
 larger native window is shown as the cap size, as in Pie.

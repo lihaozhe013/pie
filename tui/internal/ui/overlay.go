@@ -21,6 +21,7 @@ const (
 	overlayInput
 	overlayEditor
 	overlaySettings
+	overlayAuth
 )
 
 // pickerItem is one selectable row.
@@ -48,6 +49,15 @@ type overlay struct {
 	width     int
 	height    int
 	settings  *settingsState
+
+	// authProvider, authURL, and authCode carry one provider sign-in step:
+	// the authorization page to open, and the device code to type into it.
+	authProvider string
+	authURL      string
+	authCode     string
+
+	// returnTo is the overlay this one was opened from, restored on close.
+	returnTo *overlay
 }
 
 const maxPickerRows = 10
@@ -240,6 +250,8 @@ func (o *overlay) View(st styles) string {
 		body.WriteString(o.filter.View())
 		body.WriteString("\n\n")
 		body.WriteString(st.overlayHint.Render("enter to submit · esc to cancel"))
+	case overlayAuth:
+		o.renderAuth(&body, st)
 	case overlayEditor:
 		if o.message != "" {
 			body.WriteString(o.message)
@@ -253,6 +265,48 @@ func (o *overlay) View(st styles) string {
 	title := st.overlayHead.Render(o.title)
 	box := st.overlayBox.Copy().Width(o.width).Render(title + "\n\n" + body.String())
 	return box
+}
+
+// wrapCapped is wrapPlain with a line budget, so a long URL cannot push an
+// overlay past the transcript area.
+func wrapCapped(text string, width, maxLines int) string {
+	lines := strings.Split(wrapPlain(text, width), "\n")
+	if maxLines <= 0 || len(lines) <= maxLines {
+		return strings.Join(lines, "\n")
+	}
+	lines = lines[:maxLines]
+	lines[maxLines-1] += " …"
+	return strings.Join(lines, "\n")
+}
+
+func (o *overlay) renderAuth(body *strings.Builder, st styles) {
+	if o.message != "" {
+		body.WriteString(st.muted.Render(wrapCapped(o.message, maxInt(20, o.width-6), 4)))
+		body.WriteString("\n\n")
+	}
+	if o.authCode != "" {
+		body.WriteString(st.overlayHint.Render("code"))
+		body.WriteString("\n")
+		body.WriteString(st.accent.Render(o.authCode))
+		body.WriteString("\n\n")
+	}
+	if o.authURL != "" {
+		body.WriteString(st.overlayHint.Render("url"))
+		body.WriteString("\n")
+		body.WriteString(wrapCapped(o.authURL, maxInt(20, o.width-6), 6))
+		body.WriteString("\n\n")
+	}
+	hints := make([]string, 0, 3)
+	if o.authURL != "" {
+		hints = append(hints, "o open in browser")
+		if o.authCode != "" {
+			hints = append(hints, "c copy code")
+		} else {
+			hints = append(hints, "c copy url")
+		}
+	}
+	hints = append(hints, "esc hide · sign-in continues", "ctrl+x cancel")
+	body.WriteString(st.overlayHint.Render(strings.Join(hints, " · ")))
 }
 
 func (o *overlay) renderPicker(body *strings.Builder, st styles) {

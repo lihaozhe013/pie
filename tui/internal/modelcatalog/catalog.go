@@ -54,7 +54,10 @@ type Provider struct {
 	OAuth          string
 	Custom         bool
 	CredentialType string
-	Models         []*Model
+	// Auth describes the provider's sign-in methods and configuration state.
+	// It stays nil until the bridge publishes a provider snapshot.
+	Auth   *ProviderAuth
+	Models []*Model
 }
 
 // Catalog is the merged provider and model list.

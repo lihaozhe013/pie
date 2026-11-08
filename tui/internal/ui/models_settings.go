@@ -191,6 +191,37 @@ func (m *Model) modelsSettingsTab() settingsTab {
 	)
 
 	tab.Rows = append(tab.Rows, settingsRow{
+		ID:    "provider-sign-in",
+		Label: "Sign in to a provider",
+		Kind:  settingsAction,
+		Help:  "Lists every built-in provider, including ones with no credential yet.",
+		Run: func(m *Model, _ *settingsState) tea.Cmd {
+			var command tea.Cmd
+			m.openOverlayFromSettings(func() { command = m.openLoginPicker("") })
+			return command
+		},
+	})
+
+	if m.providerAuth == nil {
+		status := "reading from the bridge…"
+		help := "The provider snapshot comes from the running pi and appears once it answers."
+		if m.providerAuthErr != nil {
+			status = "unavailable"
+			help = m.providerAuthErr.Error()
+		} else if !m.bridgeReady {
+			status = "bridge unavailable"
+			help = "Sign-in needs the bridge extension; restart pie with the embedded extension."
+		}
+		tab.Rows = append(tab.Rows, settingsRow{
+			ID:      "provider-list-status",
+			Label:   "Provider list",
+			Kind:    settingsInfo,
+			Current: func() string { return status },
+			Help:    help,
+		})
+	}
+
+	tab.Rows = append(tab.Rows, settingsRow{
 		ID:    "add-provider",
 		Label: "Add provider",
 		Kind:  settingsAction,
@@ -221,13 +252,32 @@ func (m *Model) modelsSettingsTab() settingsTab {
 }
 
 func providerSummary(provider *modelcatalog.Provider) string {
-	auth := "no credential"
-	if provider.CredentialType != "" {
-		auth = provider.CredentialType
-	} else if provider.APIKey != "" {
-		auth = "models.json key"
+	parts := make([]string, 0, 2)
+	switch {
+	case provider.Auth != nil:
+		parts = append(parts, provider.Auth.Status())
+		if provider.Auth.HasOAuth() && provider.Auth.APIKeyLogin {
+			parts = append(parts, "oauth or api key")
+		} else if provider.Auth.HasOAuth() {
+			parts = append(parts, "oauth")
+		} else if provider.Auth.HasAPIKey() {
+			parts = append(parts, "api key")
+		}
+	case provider.CredentialType != "":
+		parts = append(parts, provider.CredentialType)
+	case provider.APIKey != "":
+		parts = append(parts, "models.json key")
+	default:
+		parts = append(parts, "no credential")
 	}
-	return fmt.Sprintf("%s · %d models", auth, len(provider.Models))
+	models := len(provider.Models)
+	if models == 0 && provider.Auth != nil {
+		models = provider.Auth.ModelCount
+	}
+	if models > 0 {
+		parts = append(parts, fmt.Sprintf("%d models", models))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func (m *Model) contextLimitLabel() string {
@@ -336,6 +386,7 @@ func (m *Model) openModelsPanel(title string, rows []settingsRow) {
 	}})
 	state.action = "models-panel"
 	m.settingsPanel = state
+	m.panelProvider = ""
 	m.openOverlay(&overlay{kind: overlaySettings, action: "models-panel", settings: state})
 }
 
@@ -385,6 +436,9 @@ func (m *Model) openEnabledProvidersPanel() {
 		},
 	}
 	for _, provider := range m.catalog.Providers {
+		if len(provider.Models) == 0 {
+			continue
+		}
 		provider := provider
 		rows = append(rows, settingsRow{
 			ID:    "enabled-" + provider.ID,
@@ -520,6 +574,9 @@ func (m *Model) openThinkingProvidersPanel() {
 		},
 	}}
 	for _, provider := range m.catalog.Providers {
+		if len(provider.Models) == 0 {
+			continue
+		}
 		provider := provider
 		rows = append(rows, settingsRow{
 			ID:    "thinking-" + provider.ID,
@@ -603,6 +660,15 @@ func supportedLevels(model *modelcatalog.Model) string {
 }
 
 // openProviderPanel shows one provider's details and models.
+// providerAuthHelp explains the sign-in methods of a provider, tolerating a
+// missing snapshot.
+func providerAuthHelp(auth *modelcatalog.ProviderAuth) string {
+	if auth == nil {
+		return "The provider snapshot from the running pi has not arrived yet."
+	}
+	return auth.Help()
+}
+
 func (m *Model) openProviderPanel(providerID string) {
 	provider := m.catalog.Provider(providerID)
 	if provider == nil {
@@ -631,6 +697,9 @@ func (m *Model) openProviderPanel(providerID string) {
 			Label: "Credential",
 			Kind:  settingsInfo,
 			Current: func() string {
+				if provider.Auth != nil {
+					return provider.Auth.Status()
+				}
 				if provider.CredentialType != "" {
 					return provider.CredentialType
 				}
@@ -639,20 +708,78 @@ func (m *Model) openProviderPanel(providerID string) {
 				}
 				return "none"
 			},
+			Help: providerAuthHelp(provider.Auth),
 		},
-		{
+	}
+	if auth := provider.Auth; auth != nil {
+		if auth.HasOAuth() {
+			rows = append(rows,
+				settingsRow{
+					ID:      "provider-oauth",
+					Label:   "OAuth method",
+					Kind:    settingsInfo,
+					Current: func() string { return auth.OAuthName },
+					Help:    "OAuth opens a browser page; a device code appears here when one is needed.",
+				},
+				settingsRow{
+					ID:    "provider-login-oauth",
+					Label: "Sign in with OAuth",
+					Kind:  settingsAction,
+					Help:  "Runs the provider's OAuth flow inside pi and stores the credential in auth.json.",
+					Run: func(m *Model, _ *settingsState) tea.Cmd {
+						return m.startProviderLogin(provider.ID, "oauth")
+					},
+				},
+			)
+		}
+		if auth.APIKeyLogin {
+			rows = append(rows, settingsRow{
+				ID:    "provider-login-key",
+				Label: "Sign in with API key",
+				Kind:  settingsAction,
+				Help:  "Asks for the provider's API key and stores it in auth.json.",
+				Run: func(m *Model, _ *settingsState) tea.Cmd {
+					return m.startProviderLogin(provider.ID, "api_key")
+				},
+			})
+		}
+		if m.authFlow == provider.ID {
+			rows = append(rows, settingsRow{
+				ID:    "provider-login-cancel",
+				Label: "Cancel sign-in",
+				Kind:  settingsAction,
+				Help:  "Aborts the sign-in this provider is running.",
+				Run: func(m *Model, _ *settingsState) tea.Cmd {
+					return m.cancelProviderLogin(provider.ID)
+				},
+			})
+		}
+	}
+	if provider.CredentialType != "" {
+		rows = append(rows, settingsRow{
+			ID:    "provider-logout",
+			Label: "Sign out",
+			Kind:  settingsAction,
+			Help:  "Deletes the stored credential and refreshes the model list.",
+			Run: func(m *Model, _ *settingsState) tea.Cmd {
+				return m.signOutProvider(provider.ID)
+			},
+		})
+	}
+	rows = append(rows,
+		settingsRow{
 			ID:      "provider-base",
 			Label:   "Base URL",
 			Kind:    settingsInfo,
 			Current: func() string { return provider.BaseURL },
 		},
-		{
+		settingsRow{
 			ID:      "provider-api",
 			Label:   "API",
 			Kind:    settingsInfo,
 			Current: func() string { return provider.API },
 		},
-	}
+	)
 	rows = append(rows, settingsRow{
 		ID:    "provider-add-model",
 		Label: "Add model",
@@ -681,6 +808,7 @@ func (m *Model) openProviderPanel(providerID string) {
 		})
 	}
 	m.openModelsPanel(provider.Name, rows)
+	m.panelProvider = provider.ID
 }
 
 func (m *Model) openModelPanel(providerID, modelID string) {
