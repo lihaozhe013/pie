@@ -388,12 +388,17 @@ func (t *transcript) renderAssistant(b *block, width int) string {
 }
 
 func (t *transcript) renderThinking(b *block, width int) string {
+	// Hidden thinking renders nothing, header included: a lone "thinking"
+	// label would only add a useless row to the scrollback.
+	if b.collapsed {
+		return ""
+	}
 	head := t.styles.thinkingHead.Render("○ thinking")
 	dots := b.meta
 	if dots != "" {
 		head = t.styles.thinkingHead.Render("○ thinking · " + dots)
 	}
-	if b.collapsed || strings.TrimSpace(b.text) == "" {
+	if strings.TrimSpace(b.text) == "" {
 		return head
 	}
 	body := t.styles.thinkingBody.Width(width - 2).Render(strings.TrimRight(b.text, "\n"))

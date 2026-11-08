@@ -54,7 +54,7 @@ subagents, no second agent loop, no parallel protocol.
 - Tool calls rendered as compact lines; shell commands and `edit`/`write`
   diffs are syntax-highlighted from the tool's file type, with added and
   removed diff rows tinted green and red
-- Thinking blocks (collapsible), follow-up queueing, steering, and abort
+- Thinking blocks (toggle with `ctrl+t`), follow-up queueing, steering, and abort
 - Model picker, thinking-level cycling, session rename/resume/new, compaction,
   HTML export, and token/context statistics. The chosen model is saved to pi's
   startup defaults and each thinking level is saved per model, so the next
