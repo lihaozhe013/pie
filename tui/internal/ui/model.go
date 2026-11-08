@@ -1404,7 +1404,7 @@ func (m *Model) renderEditor() string {
 		if !m.enterToSend {
 			followUp = "alt+enter follow-up"
 		}
-		hint = "ctrl+s steer · " + followUp
+		hint = "esc interrupt · ctrl+s steer · " + followUp
 	}
 	if m.disconnected {
 		hint = "pi exited · ctrl+c to quit"

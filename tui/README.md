@@ -197,7 +197,7 @@ the fallback when `pie` runs locally.
 | `alt+enter`, `ctrl+j`, `\` then `enter` | insert a newline |
 | `ctrl+s` | steer the running turn |
 | `esc` | interrupt the running turn (queues are restored to the editor) |
-| `ctrl+c` | interrupt; clear the prompt (press `up` to restore it); on an empty prompt, press twice to quit |
+| `ctrl+c` | clear the prompt without interrupting (press `up` to restore it); on an empty prompt, press twice to quit |
 | `ctrl+d` | delete the character under the cursor; quit when the editor is empty; twice in the resume list, delete the selected session |
 | `ctrl+k` | pick a model |
 | `ctrl+g` | pick a tool preset |
