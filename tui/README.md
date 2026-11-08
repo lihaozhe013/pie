@@ -115,8 +115,10 @@ pie (Go, Bubble Tea)  ⇄  stdin/stdout JSONL  ⇄  pi --mode rpc (host binary)
 - Pie's 18 color themes, applied instantly and saved to the terminal-only
   preferences file
 - A bundled bridge extension (loaded with `-e`) that adds hot tool switching,
-  Plan mode, and reload over RPC, using the same `pie:*` session entries as the
-  web UI
+  Plan mode, the `ask_user` question tool, and reload over RPC, using the same
+  `pie:*` session entries as the web UI
+- An `ask_user` panel with the question, up to six options, and a free-form
+  answer field; choosing an option and typing an answer both reply in one step
 - Extension UI support: confirm/select/input/editor dialogs, notifications,
   status entries, window titles, and editor prefills
 - Survives upgrades: unknown protocol records are ignored rather than fatal

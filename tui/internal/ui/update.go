@@ -1851,7 +1851,11 @@ func (m *Model) openExtensionOverlay(request *rpc.ExtensionUIRequestEvent) {
 	var overlay *overlay
 	switch request.Method {
 	case "select":
-		overlay = newSelectOverlay(request)
+		if isAskUserSelect(request) {
+			overlay = newAskOverlay(request)
+		} else {
+			overlay = newSelectOverlay(request)
+		}
 	case "confirm":
 		overlay = newConfirmOverlay(request)
 	case "input":
@@ -1954,12 +1958,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up", "ctrl+p", "shift+tab":
-		if o.kind == overlayPicker || o.kind == overlaySelect {
+		if o.kind == overlayPicker || o.kind == overlaySelect || o.kind == overlayAsk {
 			o.move(-1)
 			return m, nil
 		}
 	case "down", "ctrl+n", "tab":
-		if o.kind == overlayPicker || o.kind == overlaySelect {
+		if o.kind == overlayPicker || o.kind == overlaySelect || o.kind == overlayAsk {
 			o.move(1)
 			return m, nil
 		}
@@ -1968,6 +1972,8 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch o.kind {
 		case overlayPicker, overlaySelect:
 			return m, m.selectOverlayItem()
+		case overlayAsk:
+			return m, m.answerAsk()
 		case overlayConfirm:
 			return m, m.answerConfirm(true)
 		case overlayInput:

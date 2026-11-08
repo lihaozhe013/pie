@@ -9,8 +9,16 @@
 // This file is plain JavaScript with a .ts extension: pi transpiles extensions,
 // so no build step is involved.
 
+import { Type } from "typebox";
+
 const TOOL_SELECTION_TYPE = "pie:tool-selection";
 const WORK_MODE_TYPE = "pie:work-mode";
+
+const ASK_USER_TOOL_NAME = "ask_user";
+// Keep this label in sync with internal/ui/ask_user.go: it is the marker the
+// TUI uses to open its one-panel question dialog.
+const ASK_USER_OTHER_LABEL = "Write my own answer…";
+const ASK_USER_MAX_OPTIONS = 6;
 
 const BUILTIN_TOOLS = ["read", "bash", "powershell", "edit", "write", "grep", "find", "ls"];
 const CANONICAL_CODING_TOOLS = ["bash", "read", "edit", "write", "grep", "find", "ls"];
@@ -994,7 +1002,105 @@ function applyToolSelection(pi, selection) {
   pi.setActiveTools(sortToolNames([...named, ...extras]));
 }
 
+function askUserDetails(question, options, answer, answerSource) {
+  return { question, options, answer, answerSource };
+}
+
+function askUserText(text, value) {
+  return { content: [{ type: "text", text }], details: value };
+}
+
+function askUserAnswered(question, options, answer, answerSource) {
+  const prefix = answerSource === "typed" ? "The user wrote" : "The user selected";
+  return askUserText(`${prefix}: ${answer}`, askUserDetails(question, options, answer, answerSource));
+}
+
+function askUserCancelled(question, options) {
+  return askUserText(
+    "The user dismissed the question without answering. Do not ask it again: continue with a stated assumption, or wait for the user to say how to proceed.",
+    askUserDetails(question, options, null, null),
+  );
+}
+
+function normalizeAskUserOptions(options) {
+  const seen = new Set();
+  const result = [];
+  for (const option of options ?? []) {
+    if (typeof option !== "string") continue;
+    const label = option.trim();
+    // The sentinel belongs to the answer field, so the model cannot also use
+    // it as a selectable option.
+    if (!label || label === ASK_USER_OTHER_LABEL || seen.has(label) || result.length >= ASK_USER_MAX_OPTIONS) {
+      continue;
+    }
+    seen.add(label);
+    result.push(label);
+  }
+  return result;
+}
+
 export default function (pi) {
+  pi.registerTool({
+    name: ASK_USER_TOOL_NAME,
+    label: "Ask user",
+    description:
+      "Ask the user a question and wait for the answer. Use it when their intent, priorities, constraints, or a trade-off is unclear and guessing would change the result.",
+    promptSnippet: "Ask the user a focused question",
+    // A script must not answer for the user, and a question is not an approval.
+    exposure: "model-only",
+    // One question at a time: parallel questions would compete for attention.
+    executionMode: "sequential",
+    promptGuidelines: [
+      "Ask one focused question at a time. Offer 2–3 concrete options when the choice is enumerable, and let the user write their own answer.",
+      "Prefer reading the workspace over asking what it contains; ask about intent, priorities, and choices the repository cannot answer.",
+      "If the user dismisses the question, do not ask it again: continue with a stated assumption, or wait for their direction.",
+    ],
+    parameters: Type.Object({
+      question: Type.String({
+        description: "The question to show the user, in their language.",
+      }),
+      options: Type.Optional(
+        Type.Array(Type.String(), {
+          description: `Selectable answers, in the user's language. Omit for an open question. At most ${ASK_USER_MAX_OPTIONS}.`,
+          maxItems: ASK_USER_MAX_OPTIONS,
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const question = String(params?.question ?? "").trim();
+      const options = normalizeAskUserOptions(params?.options);
+      if (!question) {
+        return askUserText(
+          "ask_user needs a non-empty question.",
+          askUserDetails("", options, null, null),
+        );
+      }
+      if (!ctx.hasUI) {
+        return askUserText(
+          "This session has no interactive UI, so the question cannot be shown. Continue without asking.",
+          askUserDetails(question, options, null, null),
+        );
+      }
+
+      // The sentinel is the presentation marker. pie's TUI strips it and shows
+      // one panel with the options and an answer field; other hosts keep the
+      // normal select -> input fallback. An open question sends only the
+      // sentinel, which the TUI renders as a text-only question panel.
+      const choice = await ctx.ui.select(question, [...options, ASK_USER_OTHER_LABEL], { signal });
+      if (choice === undefined) return askUserCancelled(question, options);
+      if (choice === ASK_USER_OTHER_LABEL) {
+        const typed = await ctx.ui.input(question, "", { signal });
+        const answer = typed?.trim();
+        return answer
+          ? askUserAnswered(question, options, answer, "typed")
+          : askUserCancelled(question, options);
+      }
+      const answer = String(choice).trim();
+      if (!answer) return askUserCancelled(question, options);
+      return askUserAnswered(question, options, answer, options.includes(answer) ? "option" : "typed");
+    },
+  });
+
   // Restore a pinned tool set when a session is resumed, the way pie's server
   // rebuilds the session from its own entries.
   pi.on("session_start", async (_event, ctx) => {

@@ -102,7 +102,8 @@ storage; the resume-picker section below explains when it runs.
   custom editor owns wrapping, the caret cell, the sticky column for vertical
   movement, mouse selection over rune indices, and the scroll offset, so the
   box height and the visible rows always agree.
-- `overlay.go` — pickers and extension dialogs.
+- `overlay.go` — pickers and extension dialogs; `ask_user.go` adds the
+  question panel with its options and free-form answer field.
 - `diff.go` — tool argument/result extraction and a dependency-free line diff.
 - `syntax.go` — chroma-based syntax colours for tool content: a shell
   command, or the file a coding tool reads, writes, or edits. A call whose
@@ -209,6 +210,15 @@ written as the same session entries Pie uses, so a session moved between the
 clients keeps its preset and its Plan mode. If the extension fails to load, the
 UI reports `unavailable` in Settings › General and refuses preset changes
 rather than silently diverging.
+
+The bridge also registers the `ask_user` tool. It reuses the extension dialog
+channel: a question is a `select` whose last option is the
+`Write my own answer…` sentinel, so the TUI renders one panel with the
+question, its options, and an answer field. An option and a typed answer both
+travel back as the same response; dismissing the panel returns the same
+"dismissed" tool result as the web client. An open question sends only the
+sentinel, and other hosts keep the normal select -> input fallback. No new RPC
+command or session entry is involved.
 
 Provider sign-in is bridged the same way. `pi --mode rpc` has no provider list,
 login, or logout command, and `get_available_models` only reports providers

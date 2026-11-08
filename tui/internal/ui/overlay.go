@@ -18,6 +18,7 @@ type overlayKind int
 const (
 	overlayPicker overlayKind = iota
 	overlaySelect
+	overlayAsk
 	overlayConfirm
 	overlayInput
 	overlayEditor
@@ -222,7 +223,7 @@ func (o *overlay) dropItem(value string) bool {
 // Update forwards typing to the overlay's input widget.
 func (o *overlay) Update(msg tea.Msg) tea.Cmd {
 	switch o.kind {
-	case overlayPicker, overlayInput:
+	case overlayPicker, overlayInput, overlayAsk:
 		var cmd tea.Cmd
 		o.filter, cmd = o.filter.Update(msg)
 		if o.kind == overlayPicker {
@@ -253,7 +254,7 @@ func (o *overlay) Resize(width, height int) {
 	}
 	o.width = boxWidth
 	o.height = height
-	if o.kind == overlayPicker || o.kind == overlayInput {
+	if o.kind == overlayPicker || o.kind == overlayInput || o.kind == overlayAsk {
 		o.filter.Width = boxWidth - 8
 	}
 	if o.kind == overlayEditor {
@@ -275,6 +276,8 @@ func (o *overlay) View(st styles) string {
 	switch o.kind {
 	case overlayPicker, overlaySelect:
 		o.renderPicker(&body, st)
+	case overlayAsk:
+		o.renderAsk(&body, st)
 	case overlayConfirm:
 		if o.message != "" {
 			body.WriteString(o.message)
@@ -301,7 +304,7 @@ func (o *overlay) View(st styles) string {
 		body.WriteString(st.overlayHint.Render("ctrl+s to submit · esc to cancel"))
 	}
 
-	title := st.overlayHead.Render(o.title)
+	title := st.overlayHead.Render(wrapCapped(o.title, maxInt(20, o.width-6), 6))
 	box := st.overlayBox.Copy().Width(o.width).Render(title + "\n\n" + body.String())
 	return box
 }
