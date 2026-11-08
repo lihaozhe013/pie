@@ -2158,9 +2158,6 @@ func (m *Model) answerInput(value string) tea.Cmd {
 	if action == "session-search" {
 		return m.searchSessions(value)
 	}
-	if action == "settings-search" {
-		return m.searchSettings(value)
-	}
 	if action == "skill-search" {
 		m.setToast("searching skills.sh…")
 		return m.searchSkills(value)

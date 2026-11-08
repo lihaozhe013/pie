@@ -8,44 +8,43 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// searchSettings finds rows across every tab by label, help, and current value,
-// then jumps to the chosen row. It is the terminal counterpart of Pie's
-// SettingsSearch.
-func (m *Model) searchSettings(query string) tea.Cmd {
-	query = strings.ToLower(strings.TrimSpace(query))
-	if query == "" {
-		return nil
-	}
-	if m.settingsPanel == nil || m.settingsPanel.single {
-		m.settingsPanel = newSettingsState(m)
-	}
-	var items []pickerItem
-	for tabIndex, tab := range m.settingsPanel.tabs {
+// settingsSearchItems lists every settings row as a picker item. The label
+// carries the tab name so a whole section is searchable, and Keywords carries
+// help plus the current value, which the picker ranks below a label match.
+func (m *Model) settingsSearchItems() []pickerItem {
+	tabs := m.buildSettingsTabs()
+	items := make([]pickerItem, 0)
+	for tabIndex, tab := range tabs {
 		for rowIndex, row := range tab.Rows {
-			haystack := strings.ToLower(row.Label + " " + row.Help)
+			current := ""
 			if row.Current != nil {
-				haystack += " " + strings.ToLower(row.Current())
-			}
-			if !strings.Contains(haystack, query) {
-				continue
+				current = row.Current()
 			}
 			detail := row.Help
-			if detail == "" && row.Current != nil {
-				detail = row.Current()
+			if detail == "" {
+				detail = current
 			}
 			items = append(items, pickerItem{
-				Value:  fmt.Sprintf("%d:%d", tabIndex, rowIndex),
-				Label:  tab.Label + " · " + row.Label,
-				Detail: detail,
+				Value:    fmt.Sprintf("%d:%d", tabIndex, rowIndex),
+				Label:    tab.Label + " · " + row.Label,
+				Detail:   detail,
+				Keywords: strings.TrimSpace(row.Help + " " + current),
 			})
 		}
 	}
-	if len(items) == 0 {
-		m.setToast("no setting matches " + query)
-		return nil
+	return items
+}
+
+// openSettingsSearch shows a live fuzzy finder over every settings row. It is
+// the terminal counterpart of Pie's SettingsSearch.
+func (m *Model) openSettingsSearch() {
+	picker := newPickerOverlay("settings-jump", "Search settings", m.settingsSearchItems())
+	picker.fuzzyFilter = true
+	picker.filter.Placeholder = "type a tab, row, or value"
+	if m.overlay != nil && m.overlay.kind == overlaySettings {
+		picker.returnTo = m.overlay
 	}
-	m.openOverlay(newPickerOverlay("settings-jump", "Settings matching "+query, items))
-	return nil
+	m.openOverlay(picker)
 }
 
 func (m *Model) applySettingsJump(value string) tea.Cmd {
@@ -63,6 +62,9 @@ func (m *Model) applySettingsJump(value string) tea.Cmd {
 	}
 	m.settingsPanel = newSettingsState(m)
 	if tabIndex < 0 || tabIndex >= len(m.settingsPanel.tabs) {
+		return nil
+	}
+	if rowIndex < 0 || rowIndex >= len(m.settingsPanel.tabs[tabIndex].Rows) {
 		return nil
 	}
 	m.settingsPanel.active = tabIndex

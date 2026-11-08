@@ -25,11 +25,13 @@ const (
 	overlayAuth
 )
 
-// pickerItem is one selectable row.
+// pickerItem is one selectable row. Keywords carries extra searchable text,
+// such as help and the current value, that is not shown next to the label.
 type pickerItem struct {
-	Value  string
-	Label  string
-	Detail string
+	Value    string
+	Label    string
+	Detail   string
+	Keywords string
 }
 
 // overlay is a modal drawn over the transcript area.
@@ -42,6 +44,10 @@ type overlay struct {
 	items    []pickerItem
 	filtered []pickerItem
 	cursor   int
+
+	// fuzzyFilter ranks rows by fuzzy match instead of plain substring
+	// filtering; the settings search opts in.
+	fuzzyFilter bool
 
 	filter textinput.Model
 	editor textarea.Model
@@ -163,10 +169,19 @@ func withTimeout(message string, timeoutMs int) string {
 func (o *overlay) refilter() {
 	query := strings.ToLower(strings.TrimSpace(o.filter.Value()))
 	o.filtered = o.filtered[:0]
-	for _, item := range o.items {
-		haystack := strings.ToLower(item.Label + " " + item.Detail)
-		if query == "" || strings.Contains(haystack, query) {
-			o.filtered = append(o.filtered, item)
+	switch {
+	case query == "":
+		o.filtered = append(o.filtered, o.items...)
+	case o.fuzzyFilter:
+		o.filtered = fuzzyFilterItems(o.items, query)
+		// A new query is a new ranking; start at the best match.
+		o.cursor = 0
+	default:
+		for _, item := range o.items {
+			haystack := strings.ToLower(item.Label + " " + item.Detail + " " + item.Keywords)
+			if strings.Contains(haystack, query) {
+				o.filtered = append(o.filtered, item)
+			}
 		}
 	}
 	if o.cursor >= len(o.filtered) {

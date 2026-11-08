@@ -444,10 +444,7 @@ func (m *Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter", " ":
 		return m.activateSettingsRow()
 	case "/":
-		request := &rpc.ExtensionUIRequestEvent{Title: "Search settings", Method: "input", Placeholder: "theme, cache, provider"}
-		overlay := newInputOverlay(request)
-		overlay.action = "settings-search"
-		m.openOverlay(overlay)
+		m.openSettingsSearch()
 		return m, nil
 	}
 	return m, nil

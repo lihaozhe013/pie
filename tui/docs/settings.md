@@ -2,8 +2,9 @@
 
 The panel opens with `/settings`, or from the `ctrl+p` command palette. Every
 tab reads the same files as the Pie web UI, so a change made in either client
-is visible to the other after a reload. Press `/` inside the panel to search
-every tab and jump to a row.
+is visible to the other after a reload. Press `/` inside the panel for a
+fuzzy search across every tab; it matches tab names, row labels, help text,
+and current values, ranks the best matches first, and jumps to the chosen row.
 
 Shared files are written immediately, with a lock and an atomic replace. The
 TUI never drops JSON keys it does not understand.

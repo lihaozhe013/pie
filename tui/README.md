@@ -62,9 +62,9 @@ subagents, no second agent loop, no parallel protocol.
 - A command palette (`ctrl+p`) that searches and runs client or pi commands
   without clearing the composer draft
 - A settings panel (`/settings`) with the same configuration surfaces as the
-  Pie web UI and a `/` search that jumps across every tab, sharing pi's files:
-  `settings.json`, `models.json`, `AGENTS.md`, and the `pie-*` companion files
-  in the agent directory
+  Pie web UI and a fuzzy `/` search that jumps across every tab, sharing pi's
+  files: `settings.json`, `models.json`, `AGENTS.md`, and the `pie-*` companion
+  files in the agent directory
 - Tool presets (`/preset`): the built-in configured, plan, autonomous,
   chat-only, read-only, default, and full sets, plus custom presets stored in
   `pie-tool-presets.json` and editable from Settings › Tools. The last preset
