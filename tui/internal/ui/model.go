@@ -1177,11 +1177,11 @@ func (m *Model) View() string {
 	lines := make([]string, 0, m.height)
 	lines = append(lines, m.bodyLines()...)
 
-	if len(lines) < m.height {
-		lines = append(lines, m.renderStatus())
-	}
 	if m.activityRows() > 0 && len(lines) < m.height {
 		lines = append(lines, m.renderActivity())
+	}
+	if len(lines) < m.height {
+		lines = append(lines, m.renderStatus())
 	}
 	if m.completion.visible && m.overlay == nil && len(lines) < m.height {
 		lines = append(lines, strings.Split(m.renderCompletion(), "\n")...)

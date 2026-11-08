@@ -212,7 +212,7 @@ func (m *Model) activityLabel() string {
 	}
 }
 
-// renderActivity renders the single row directly above the composer. It lives
+// renderActivity renders the single activity row above the status line. It lives
 // outside the transcript, so a long run stays visible while history scrolls.
 func (m *Model) renderActivity() string {
 	label := m.activityLabel()
