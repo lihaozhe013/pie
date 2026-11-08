@@ -17,6 +17,25 @@ The two projects are intentionally independent. Each has its own `README.md`, `A
 dependency manifest or Go module, build, and license. There is no root package-manager workspace, no
 shared source tree, and no cross-project import.
 
+## Positioning
+
+Pie is a UX layer for Pi, not a replacement for it. Both clients make the installed agent easier to
+drive; neither changes how it runs.
+
+- `tui/` is the detail client and the fallback. It shows the conversation with full fidelity in a
+  terminal: streaming output, tool calls, diffs, thinking blocks, and token and context statistics.
+  One statically compiled binary works over SSH, in tmux, on a remote server, or on a machine
+  without a browser.
+- `webui/` is the orchestration client. It carries parallel conversations, one task queue per
+  working directory, and work across projects, and it can be reached from another device on the
+  LAN.
+- Both stay lightweight first. A good default beats a speculative setting, and feature count never
+  outranks clarity.
+
+The boundary follows from that split: a feature may change how Pi's work is presented, scheduled,
+and driven, but not how Pi executes it. Subagents, a second agent loop, a parallel tool or session
+protocol, or any other new execution model are out of scope for both clients.
+
 ## Quick start
 
 ### Web UI

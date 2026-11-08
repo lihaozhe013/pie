@@ -17,6 +17,20 @@ is worth having only because it leaves that signal visible.
 Priorities: smooth conversation, clear execution feedback, a quiet and polished interface, then
 feature count.
 
+## Positioning in Pie
+
+The repository ships two clients with different jobs. This one is the orchestration client: several
+conversations in parallel, one task queue per working directory, and the Orchestrator preset that
+lets a session drive its own project's queue. The terminal client is the detail client and the
+fallback: it shows the same conversation with more fidelity on any machine that has a terminal.
+Both are lightweight first, and both are a UX layer over Pi.
+
+The boundary is the same for both clients: a feature may change how Pi's work is presented,
+scheduled, and driven; it may not change how Pi executes it. A subagent runtime, a second agent
+loop, a parallel tool or session protocol, or any other new execution model is out of scope. The
+queue and the Orchestrator preset stay inside it: they schedule ordinary Pi SDK sessions and add one
+`task_manager` tool, not an agent runtime.
+
 ## Scope
 
 Keep sessions, message input, streaming responses, tool feedback, and the controls needed to use
@@ -27,10 +41,11 @@ Do not build an IDE, file workspace, Git/worktree manager, embedded terminal, mu
 or comprehensive configuration center. Pie does not implement or manage subagents; installed Pi
 extensions remain Pi's responsibility. Prefer a good default over speculative settings.
 
-The one exception is a task queue per project, described in [Tasks](tasks.md): one active queued
-task at a time in each working directory, each executed by a fresh in-process Pi SDK session through
-the same runtime chat uses. Chat sessions are shown on the same board and may run in parallel; a
-started queue waits while a chat is running before its next claim, so chat always has priority.
+The one addition beyond that surface is a task queue per project, described in [Tasks](tasks.md):
+one active queued task at a time in each working directory, each executed by a fresh in-process Pi
+SDK session through the same runtime chat uses. Chat sessions are shown on the same board and may
+run in parallel; a started queue waits while a chat is running before its next claim, so chat
+always has priority.
 Different projects may run at the same time; there is no parallel queued-task execution inside a
 project, no global worker pool, and no second agent protocol. A task session is visible in chat and
 the queue can be deleted without changing chat behavior. One global autonomous switch chooses the

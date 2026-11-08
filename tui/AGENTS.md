@@ -1,5 +1,12 @@
 # Project Instructions
 
+## Product boundary
+
+`pie` is a UX layer over Pi: presentation, navigation, and configuration convenience. It must not
+change how Pi executes work. No subagents, no parallel agent runs, no second tool or session
+protocol, and no feature that alters the agent loop. The client stays thin: the conversation, tools,
+and sessions belong to the `pi` binary.
+
 ## Testing
 
 - **AI agents are strictly forbidden from performing any kind of testing.**

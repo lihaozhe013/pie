@@ -25,7 +25,9 @@ the differences noted where the built version is narrower than the original plan
 ## Why this is not the boundary the project had
 
 `docs/README.md` and `docs/architecture.md` previously ruled out a multi-agent orchestrator and a
-subagent/queue feature. This document replaces that part of the boundary with a narrower rule:
+subagent/queue feature. This document replaces that part of the boundary with a narrower rule that
+stays inside the repository positioning: scheduling and presenting ordinary Pi sessions is a UX
+concern, while the execution model remains Pi's.
 
 - **Allowed:** one queue per working directory with one active queued task at a time, executed as a
   fresh Pi SDK session through the same runtime chat uses.

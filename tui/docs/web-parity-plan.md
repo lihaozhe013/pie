@@ -5,6 +5,10 @@ web UI ([`webui/`](../../webui/)), excluding the task workspace and drag-and-dro
 attachments. It records the assessment, the shared configuration contract, the
 runtime gaps and their agreed solutions, and a phased implementation order.
 
+Parity covers the conversation and configuration surface, not the orchestration
+surface: the web UI remains the orchestration client, with parallel work and
+task queues, while `pie` remains the detail client and the terminal fallback.
+
 Status: implemented. Every phase below landed; `settings.md` is the
 delivered settings reference and `../README.md` lists the final commands. The
 bridge-extension approach in section 6.4 is what shipped.
@@ -13,7 +17,9 @@ bridge-extension approach in section 6.4 is what shipped.
 
 `pie` must offer the same conversation features and the same configuration
 surfaces as Pie, and must read and write the same files in the same agent
-directory. A change made in one client is visible in the other.
+directory. A change made in one client is visible in the other. Parity stops at
+the orchestration surface: queues and the Orchestrator preset stay with the
+browser client.
 
 - Settings mirrors Pie's configuration surfaces: General, Instructions,
   Appearance, Models and Providers (Pie keeps these in one Models view),

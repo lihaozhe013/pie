@@ -27,6 +27,9 @@ Rules that keep the client thin:
   or to the child's stderr tail kept for crash reports.
 - The client keeps a *projection* of the session, never the source of truth. Every
   authoritative value comes from a response or a `message_end`/`*_end` event.
+- UX only. Presentation, navigation, and configuration convenience are in scope;
+  execution semantics are not. No subagents, no parallel agent runs, no second
+  tool or session protocol, and no feature that changes how `pi` runs a turn.
 
 ## Protocol rules
 

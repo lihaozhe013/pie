@@ -16,6 +16,20 @@ code, dependencies, or build pipeline.
 pie (Go, Bubble Tea)  ⇄  stdin/stdout JSONL  ⇄  pi --mode rpc (host binary)
 ```
 
+## Positioning
+
+`pie` is the detail client and the fallback. It renders the whole conversation in
+a terminal: streaming output, tool calls, diffs, thinking blocks, and token and
+context statistics, plus the same configuration surfaces the web UI exposes. One
+statically compiled binary runs over SSH, inside tmux, on a remote server, or on
+a machine without a browser or a desktop session.
+
+It is also lightweight first: no Node.js, no browser, no embedded agent. The
+browser client is the orchestration client, with parallel conversations and
+per-project task queues; this client stays focused on showing one conversation
+well. Both are a UX layer over Pi. Neither changes how Pi executes work: no
+subagents, no second agent loop, no parallel protocol.
+
 ## Features
 
 - A startup welcome panel with a hand-drawn PIE wordmark, the working

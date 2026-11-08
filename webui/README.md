@@ -6,6 +6,12 @@ polished browser interface.
 This is an independently maintained project for personal, local use. It no longer tracks or merges
 its source project. It is not an IDE or an all-in-one manager.
 
+This is the orchestration client in Pie: parallel conversations, one task queue per working
+directory, and an Orchestrator preset that drives a queue from a session. The terminal client in
+`../tui` is the detail client and the fallback on machines without a browser. Both stay lightweight
+first, and both are a UX layer over Pi: orchestration here schedules ordinary Pi sessions; it is not
+multi-agent orchestration and adds no second agent runtime.
+
 This directory is the browser client in the Pie monorepo. It is independent of the terminal client
 in `../tui`: the two share Pi's configuration files, but no code, dependencies, or build pipeline.
 
@@ -19,12 +25,14 @@ in `../tui`: the two share Pi's configuration files, but no code, dependencies, 
 - Access the controls and information needed for the conversation.
 
 Pi provides the agent capabilities; this project provides their presentation and interaction.
-Visualizing the CLI does not mean building a management panel for every CLI feature.
+Visualizing the CLI does not mean building a management panel for every CLI feature. The queue and
+the Orchestrator preset stay inside that rule: they schedule ordinary Pi SDK sessions and add one
+tool, not an execution model.
 
-Pie does not provide built-in subagents, multi-agent orchestration, Git/worktree management, file
-browsing, file previews, or terminal tabs. Sessions are grouped by their working directories, not by
-Git repositories. Installed Pi extensions still load according to Pi semantics; Pie does not add an
-agent-management layer around them.
+Pie does not provide built-in subagents or an agent-orchestration runtime, Git/worktree management,
+file browsing, file previews, or terminal tabs. Sessions are grouped by their working directories,
+not by Git repositories. Installed Pi extensions still load according to Pi semantics; Pie does not
+add an agent-management layer around them.
 
 Historical subagent sessions and settings from the original Pi Web project have no compatibility or
 migration layer here. Existing files are not deleted automatically. Historical settings modules for

@@ -4,6 +4,14 @@ Pie is a personal, local GUI for Pi. Keep changes focused on making conversation
 clear and convenient. Pi owns agent capabilities; use the installed SDK rather than creating a
 parallel protocol.
 
+## Product boundary
+
+This client is the orchestration side of Pie: parallel conversations, per-project queues, and the
+Orchestrator preset, all over ordinary Pi sessions. It remains a UX layer. Features may change how
+work is presented, scheduled, and driven; they may not change how Pi executes it. Subagents, a
+second agent loop, and parallel tool or session protocols are out of scope. Task queues and the
+Orchestrator preset are allowed because they schedule ordinary SDK sessions and add one tool.
+
 ## Changes
 
 - Read [project direction](docs/README.md) and [interface principles](docs/design.md) for product or

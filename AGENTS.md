@@ -15,6 +15,9 @@ reason.
 
 ## Working rules
 
+- Both clients are a UX layer over Pi. Presentation, orchestration of ordinary Pi sessions, and
+  configuration convenience are in scope; execution semantics are not. Do not add subagents, a
+  second agent loop, or a parallel tool or session protocol to either client.
 - Run project commands from the project directory. There is no root package manager workspace and no
   root Go module.
 - Follow the selected project's `AGENTS.md`; it takes precedence for work inside that project.

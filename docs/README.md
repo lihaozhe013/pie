@@ -3,6 +3,18 @@
 Pie is a monorepo with two independent clients for the Pi coding agent. This guide explains what
 belongs where, what the clients share, and where to find the detailed documentation.
 
+## Positioning
+
+The two clients divide the work. `tui/` is the detail client and the fallback: it renders the
+conversation with full fidelity in a terminal, and one static binary works over SSH, in tmux, on a
+remote host, or on a machine without a browser. `webui/` is the orchestration client: parallel
+conversations, per-project task queues, and work across projects, reachable from another device on
+the LAN. Both are lightweight first.
+
+Both are a UX layer over Pi. A feature may change how Pi's work is presented, scheduled, and driven;
+it may not change how Pi executes it. Subagents, a second agent loop, a parallel tool or session
+protocol, or any other new execution model are out of scope for both clients.
+
 ## Clients
 
 | Directory | Responsibility                                            | Runtime                                     | Documentation                                                                  |
@@ -19,6 +31,9 @@ project defines a second agent protocol.
 
 Keep these ownership rules when changing the repository:
 
+- Both clients are a UX layer over Pi. Presentation, orchestration of ordinary Pi sessions, and
+  configuration convenience are in scope; execution semantics are not. Do not add subagents, a
+  second agent loop, or a parallel tool or session protocol to either client.
 - `webui/` owns its package manifest, Bun lockfile, Vite configuration, server, components, styles,
   Tauri shell, packaging, and documentation.
 - `tui/` owns its Go module, packages, Makefile, bridge extension, and documentation.
