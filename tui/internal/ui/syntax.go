@@ -314,7 +314,15 @@ func diffTint(accent, base lipgloss.AdaptiveColor, alpha float64) string {
 	if !ok {
 		return ""
 	}
-	return profile.Color(mixed).Sequence(true)
+	color := profile.Color(mixed)
+	if color == nil {
+		return ""
+	}
+	seq := color.Sequence(true)
+	if seq == "" {
+		return ""
+	}
+	return termenv.CSI + seq + "m"
 }
 
 func resolveAdaptive(color lipgloss.AdaptiveColor) string {
