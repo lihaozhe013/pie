@@ -392,8 +392,12 @@ func (m *Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.presetDraft = nil
 			return m, m.openSettingsAt("tools")
 		}
-		if m.overlay.action == "models-panel" {
-			return m, m.openSettingsAt("models")
+		if m.overlay.action == "settings-panel" {
+			tabID := m.panelTab
+			if tabID == "" {
+				tabID = "models"
+			}
+			return m, m.openSettingsAt(tabID)
 		}
 		if m.overlay.action == "skill-detail" {
 			return m, m.openSettingsAt("skills")
@@ -540,6 +544,8 @@ func (m *Model) openSettings() tea.Cmd {
 	if m.settingsPanel != nil && m.settingsPanel.single {
 		m.settingsPanel = nil
 	}
+	m.panelProvider = ""
+	m.panelUsageProvider = ""
 	m.openSettingsOverlay()
 	return tea.Batch(m.loadEntries(), m.loadToolSnapshot())
 }
@@ -588,6 +594,7 @@ func (m *Model) buildSettingsTabs() []settingsTab {
 		m.instructionsSettingsTab(),
 		m.appearanceSettingsTab(),
 		m.modelsSettingsTab(),
+		m.providersSettingsTab(),
 		m.toolsSettingsTab(),
 		m.skillsSettingsTab(),
 		m.pluginsSettingsTab(),
@@ -827,4 +834,20 @@ func (m *Model) applyTheme(id string) {
 	m.transcript.SetStyles(m.styles)
 	m.composer.SetStyles(m.styles)
 	m.layout()
+}
+
+// openSettingsPanelAt opens a single-tab sub-panel that returns to tabID when
+// the user presses esc.
+func (m *Model) openSettingsPanelAt(tabID, title string, rows []settingsRow) {
+	state := newSettingsPanel(title, []settingsTab{{
+		ID:    "panel",
+		Label: title,
+		Rows:  rows,
+	}})
+	state.action = "settings-panel"
+	m.settingsPanel = state
+	m.panelTab = tabID
+	m.panelProvider = ""
+	m.panelUsageProvider = ""
+	m.openOverlay(&overlay{kind: overlaySettings, action: "settings-panel", settings: state})
 }

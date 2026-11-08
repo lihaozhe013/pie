@@ -41,20 +41,23 @@ pie (Go, Bubble Tea)  ⇄  stdin/stdout JSONL  ⇄  pi --mode rpc (host binary)
   launch starts where the last one ended
 - A command palette (`ctrl+p`) that searches and runs client or pi commands
   without clearing the composer draft
-- A settings panel (`/settings`) with the same tabs as the Pie web UI and a `/`
-  search that jumps across every tab, sharing pi's files: `settings.json`,
-  `models.json`, `AGENTS.md`, and the `pie-*` companion files in the agent
-  directory
+- A settings panel (`/settings`) with the same configuration surfaces as the
+  Pie web UI and a `/` search that jumps across every tab, sharing pi's files:
+  `settings.json`, `models.json`, `AGENTS.md`, and the `pie-*` companion files
+  in the agent directory
 - Tool presets (`/preset`): the built-in configured, plan, chat-only,
   read-only, default, and full sets, plus custom presets stored in
   `pie-tool-presets.json` and editable from Settings › Tools. The last preset
   is remembered in the terminal-only preferences and reused for new sessions;
   a resumed session keeps its own recorded selection
-- A Models tab that merges pi's catalog with `models.json`: context-window
-  limit, startup defaults, enabled-model patterns, per-model thinking levels,
-  provider credentials with `pi auth check` readiness, per-model context
-  windows, and custom provider and model editors (including compatibility
-  endpoints, costs, and thinking maps)
+- A Models tab that merges pi's catalog with `models.json`: the
+  context-window limit, startup model and thinking level, enabled-model
+  patterns, per-model thinking levels, and per-model context windows
+- A Providers tab for credentials, endpoints, and subscription usage: default
+  provider, `pi auth check` readiness, OAuth and API-key sign-in, custom
+  provider and model editors (including compatibility endpoints, costs, and
+  thinking maps), and usage windows and balances for providers that report
+  them
 - Code mode controls in Settings › Tools: automatic or always-on (writes
   `+codemode` to `defaultTools` minimally), the `codemode.mode` choice, and the
   inline result budget

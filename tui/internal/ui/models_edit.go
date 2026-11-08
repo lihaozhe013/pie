@@ -267,7 +267,7 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 					return nil
 				}
 				m.reloadConfig()
-				cmd := m.openSettingsAt("models")
+				cmd := m.openSettingsAt("providers")
 				if m.settingsPanel != nil {
 					m.settingsPanel.notice = "provider deleted"
 				}
@@ -276,7 +276,7 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 		})
 	}
 
-	m.openModelsPanel("Provider: "+providerLabel(draft), rows)
+	m.openProvidersPanel("Provider: "+providerLabel(draft), rows)
 }
 
 func providerLabel(draft *providerDraft) string {
@@ -600,7 +600,7 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 		})
 	}
 
-	m.openModelsPanel("Model: "+draft.ID, rows)
+	m.openProvidersPanel("Model: "+draft.ID, rows)
 }
 
 // openThinkingMapEditor edits one model's thinkingLevelMap entries.
@@ -650,7 +650,7 @@ func (m *Model) openThinkingMapEditor(draft *modelDraft) {
 			},
 		})
 	}
-	m.openModelsPanel("Thinking map: "+draft.ID, rows)
+	m.openProvidersPanel("Thinking map: "+draft.ID, rows)
 }
 
 func (m *Model) saveModelDraft(draft *modelDraft) error {

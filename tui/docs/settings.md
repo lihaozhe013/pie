@@ -37,39 +37,62 @@ equivalent.
 
 ## Models
 
-Four sections share `models.json`, `settings.json`, `auth.json`,
-`models-store.json`, and `pie-model-settings.json`:
+The Models tab owns model selection and metadata. It shares `models.json`,
+`settings.json`, `models-store.json`, and `pie-model-settings.json` with Pie:
 
-- General: context-window cap (blank stores an explicit no-cap), default
-  provider, model, and thinking level. Picking a model in the TUI writes it to
-  the startup defaults, and every thinking-level change is written to
-  `modelThinkingLevels` for the current model, so the next launch starts where
-  the last one ended. A resumed session still restores the model and level
-  recorded in its own log.
+- Defaults: the startup model and thinking level. Picking a model in the TUI
+  writes `defaultProvider` and `defaultModel`, and every thinking-level change
+  is written to `modelThinkingLevels` for the current model, so the next launch
+  starts where the last one ended. A resumed session still restores the model
+  and level recorded in its own log.
+- Context-window cap: blank stores an explicit no-cap in
+  `pie-model-settings.json`. The cap also feeds the context meter in the header
+  and `/stats`: a model with a larger native window is shown as the cap size, as
+  in Pie.
 - Enabled models: patterns and per-model switches; edits expand only the
   pattern that covers the changed model and keep `:level` pins and unmatched
   patterns intact.
 - Per-model thinking levels: `modelThinkingLevels` for the session model picker.
 - Per-model context windows: writes `providers.<id>.modelOverrides.<model>.contextWindow`
   in `models.json`, keeping other override keys and removing empty objects.
-- Providers: every built-in provider, including ones with no credential yet,
-  with its sign-in state, `pi auth check` readiness, API keys, and custom
-  providers and models with compatibility endpoints and costs.
+- Catalog: the merged provider and model count, plus `Refresh model catalog`,
+  which runs `pi update --models`.
+
+## Providers
+
+The Providers tab owns credentials, endpoints, and subscription usage:
+
+- Default provider: `defaultProvider` in `settings.json`. Picking a model in
+  Models also writes this key.
+- Credentials: every built-in provider, including ones with no credential yet,
+  with its sign-in state and model count. `Add provider` defines a compatible
+  endpoint in `models.json`.
+- Provider entries: credential state, OAuth and API-key sign-in, base URL, API,
+  and the provider's models. `Edit provider` exposes the compatibility
+  endpoint, API key, and a `pi auth check` readiness test. A custom provider or
+  model opens its editor; a catalog model opens a read-only summary with its
+  context window, output limit, reasoning support, and cost.
+- Usage limits: rate-limit windows and balances queried from the provider's own
+  endpoint. Supported providers are OpenAI Codex (5-hour and weekly windows),
+  DeepSeek, OpenRouter, Moonshot AI and Moonshot AI CN, MiniMax and MiniMax CN
+  (rolling and weekly quotas or balance), Vercel AI Gateway, OpenCode Go, and
+  Kimi For Coding. A panel shows each window's remaining percentage or count,
+  its reset time, and balance metrics. The first open queries automatically;
+  `Refresh usage` queries again. Reports stay in memory and are not written to
+  disk. The bridge resolves the credential through pi's `ModelRuntime`, so
+  OAuth refreshes and provider-scoped environment stay inside pi, and only the
+  provider's official origin receives it.
 
 Provider sign-in runs through the bridge extension, so the OAuth flows and
-`auth.json` writes are pi's own. `Sign in to a provider` in the Models tab and
-`/login` list every provider and the methods it offers; a provider that
-supports both appears once as OAuth and once as API key. `/logout` and the
-panel's `Sign out` delete a stored credential. While a flow runs, the TUI shows
-the verification URL or device code in an overlay: `o` or `enter` opens the
-page in the platform browser, `c` copies the code or URL, `ctrl+x` cancels the
-flow, and `esc` hides the overlay without cancelling. A finished sign-in
-refreshes the provider list and
-the available models, and a session with no model adopts the new provider's
-first one.
-
-The cap also feeds the context meter in the header and `/stats`: a model with a
-larger native window is shown as the cap size, as in Pie.
+`auth.json` writes are pi's own. `Sign in to a provider` in the Providers tab
+and `/login` list every provider and the methods it offers; a provider that
+supports both appears once as OAuth and once as API key. `/logout`, the panel's
+`Sign out`, and `Sign out of a provider` delete a stored credential. While a
+flow runs, the TUI shows the verification URL or device code in an overlay: `o`
+or `enter` opens the page in the platform browser, `c` copies the code or URL,
+`ctrl+x` cancels the flow, and `esc` hides the overlay without cancelling. A
+finished sign-in refreshes the provider list and the available models, and a
+session with no model adopts the new provider's first one.
 
 ## Tools
 

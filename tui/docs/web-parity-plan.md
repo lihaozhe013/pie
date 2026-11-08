@@ -15,10 +15,11 @@ bridge-extension approach in section 6.4 is what shipped.
 surfaces as Pie, and must read and write the same files in the same agent
 directory. A change made in one client is visible in the other.
 
-- Settings has the same tabs: General, Instructions, Appearance, Models, Tools,
-  Skills, Plugins, MCP.
-- The Models tab reproduces Pie's four sections: General, Defaults, Model
-  reasoning, Providers.
+- Settings mirrors Pie's configuration surfaces: General, Instructions,
+  Appearance, Models and Providers (Pie keeps these in one Models view),
+  Tools, Skills, Plugins, MCP.
+- The Models and Providers tabs reproduce Pie's model sections: General,
+  Defaults, Model reasoning, and Providers.
 - Composer features match: tool presets, Plan mode, goal, model and thinking
   selection, title generation.
 - Working directory handling matches: a project is a folder, sessions are grouped
@@ -31,7 +32,7 @@ directory. A change made in one client is visible in the other.
 
 ### 2.1 In scope
 
-- The eight Settings tabs and their contents.
+- The Settings tabs and their contents.
 - Tool presets: built-in presets, custom presets, the composer selector, Plan
   mode, and the preset editor.
 - Session title generation.
@@ -223,6 +224,7 @@ coexist.
 | `/pie-login <provider> [oauth\|api_key]` | Run pi's own `ModelRuntime.login` detached and report through `pie-auth ` notifications |
 | `/pie-auth-cancel <provider>` | Abort the running sign-in through its abort signal |
 | `/pie-logout <provider>` | Delete the stored credential and refresh the provider's models |
+| `/pie-usage <provider> <path>` | Resolve the provider credential, fetch its official usage endpoint, and write the normalized windows and balances as JSON |
 
 `/pie-publish` writes to a caller-supplied path instead of appending entries, so
 the session log is not bloated by snapshots. The sign-in commands need the same
@@ -281,7 +283,7 @@ the full suite is not run.
   restart.
 - Appearance: theme picker that reproduces Pie's palette names with terminal
   colors.
-- Acceptance: all eight tabs are reachable, three have real content, and the
+- Acceptance: all tabs are reachable, three have real content, and the
   remaining tabs show a placeholder.
 
 ### P2a: Bridge extension
@@ -307,23 +309,25 @@ the full suite is not run.
 - Acceptance: the same `pie-tool-presets.json` is offered by both clients; a
   preset chosen in one is reflected in the other; Plan blocks writes.
 
-### P3: Models tab
+### P3: Models and Providers tabs
 
 - `internal/catalog`: merge `models-store.json`, `models.json`, `auth.json`, and
   `settings.json`; enabled-model pattern matching (globs, `provider/model`,
   `:thinking` pins); minimal-edit operations for enable, disable, pin, prune,
   clear; provider ordering.
 - Sections:
-  - General: global context limit from `pie-model-settings.json`; blank means
-    explicit no cap; first-install default 350,000.
-  - Defaults: enabled models with per-model switches, pin, prune, clear, and
-    catalog refresh through `pi update --models`.
-  - Model reasoning: per-model `modelThinkingLevels` with the supported levels
-    from the catalog.
-  - Providers: every provider with its OAuth and API-key methods and sign-in
-    state, API-key readiness via `pi auth check`, sign-in and sign-out through
-    the bridge extension, and custom providers with their models, all with
-    add, edit, reorder, and delete.
+  - Models, general: global context limit from `pie-model-settings.json`; blank
+    means explicit no cap; first-install default 350,000; default model and
+    thinking level.
+  - Models, defaults: enabled models with per-model switches, pin, prune, clear,
+    and catalog refresh through `pi update --models`.
+  - Models, reasoning: per-model `modelThinkingLevels` and context-window
+    overrides with the supported levels from the catalog.
+  - Providers: `defaultProvider`, every provider with its OAuth and API-key
+    methods and sign-in state, API-key readiness via `pi auth check`, sign-in
+    and sign-out through the bridge extension, custom providers with their
+    models, add, edit, and delete, and subscription usage windows and balances
+    through `/pie-usage`.
 - Session model picker honors enabled models, per-model reasoning defaults, and
   the context limit.
 - Acceptance: changes written by the TUI appear in Pie's Models panel and the
@@ -418,7 +422,9 @@ the full suite is not run.
   equivalents only: ctrl+o expands tool output and diffs in place.
 - Provider sign-in is bridged through the extension, so the TUI runs the same
   OAuth and API-key flows as Pie and writes the same `auth.json`. Subscription
-  usage and quota still have no surface: the panel shows credential state only.
+  usage and quota use the same bridge: `/pie-usage` resolves auth through pi
+  and reads the provider's official endpoint, so the panel matches Pie's usage
+  view.
 - Online model discovery and connectivity tests: reduced to
   `pi update --models` and `pi auth check`.
 - Task workspace, queue, orchestrator, autonomous preset, and drag-and-drop:

@@ -363,8 +363,8 @@ func (m *Model) openOverlayFromSettings(open func()) {
 	m.overlay.returnTo = previous
 }
 
-// refreshAuthPanels rebuilds an open Models panel so it shows the credential
-// state a sign-in just changed.
+// refreshAuthPanels rebuilds an open Providers panel so it shows the
+// credential state a sign-in just changed.
 func (m *Model) refreshAuthPanels() {
 	if m.settingsPanel == nil || m.overlay == nil {
 		return
@@ -374,7 +374,7 @@ func (m *Model) refreshAuthPanels() {
 		if !m.settingsPanel.single {
 			m.openSettingsOverlay()
 		}
-	case "models-panel":
+	case "settings-panel":
 		if m.panelProvider != "" {
 			m.openProviderPanel(m.panelProvider)
 		}
@@ -397,6 +397,7 @@ func (m *Model) signOutProvider(providerID string) tea.Cmd {
 		return nil
 	}
 	m.reloadConfig()
+	delete(m.providerUsage, providerID)
 	m.setToast(m.providerLabel(providerID) + ": signed out")
 	return m.loadProviderAuth()
 }
@@ -453,6 +454,7 @@ func (m *Model) finishAuthFlow(payload authNotify) tea.Cmd {
 	}
 
 	m.reloadConfig()
+	delete(m.providerUsage, providerID)
 	message := payload.Message
 	if message == "" {
 		if payload.SignedOut {

@@ -202,7 +202,8 @@ parsed is backed up (`.corrupt-<timestamp>`) instead of being silently replaced.
 `pi --mode rpc` does not expose tool switching, reload, or a system-prompt
 read, so the binary embeds a small extension (`internal/bridge/pie-bridge.ts`),
 writes it to `<state-dir>/bridge/`, and passes it with `-e`. The extension
-registers `/pie-tools`, `/pie-mode`, `/pie-reload`, and `/pie-publish`; the UI
+registers `/pie-tools`, `/pie-mode`, `/pie-reload`, `/pie-publish`, and the
+provider commands described below; the UI
 drives them with ordinary `prompt` commands. Tool selections and work modes are
 written as the same session entries Pie uses, so a session moved between the
 clients keeps its preset and its Plan mode. If the extension fails to load, the
@@ -220,6 +221,15 @@ command handler before it answers the prompt and a browser login can take
 minutes. The UI turns those notifications into an overlay with the
 verification URL or device code, and refreshes the provider snapshot and
 available models when the flow ends.
+
+Subscription usage is bridged too. `/pie-usage <provider> <path>` resolves the
+provider's request auth through `ModelRuntime.getProviderAuth`, so OAuth
+token refreshes and provider-scoped environment stay inside pi. It fetches only
+the provider's official endpoint, rejects a custom origin the same way Pie
+does, and normalizes the reply into rate-limit windows, balances, and metrics
+for the Providers panel. The TUI never reads `auth.json` secrets for usage and
+never stores the report: `internal/providerusage` parses the bridge's reply and
+the UI keeps it in memory until the client exits.
 
 `pi --mode rpc` does not persist the model or thinking level it changes, so
 `pie` writes them itself: picking a model updates `defaultProvider` and
@@ -340,16 +350,19 @@ package is never bundled: availability is the `goal` command reported by
 on without it. `pie` writes no goal state of its own, so a goal started in
 Pie appears in the header here and the reverse.
 
-Settings › Models merges three sources without a second cache:
-`models-store.json` (pi's catalog), `models.json` (custom providers, models,
-and model overrides), and `get_available_models` (what the running agent
-actually exposes). `internal/modelcatalog` owns the merge and the minimal-edit
-rules for `enabledModels`: turning one model off expands only the pattern that
-covers it, preserves `:thinking` pins, and never touches patterns that match
-nothing. Writes go through `internal/config`, so a provider or model added in
-the terminal appears in Pie and the reverse. The context-window cap in
-`pie-model-settings.json` is shared, but only Pie's server applies it to a
-runtime; the terminal client cannot re-clamp pi's in-process model list.
+Settings › Models and Settings › Providers share one catalog without a second
+cache: `models-store.json` (pi's catalog), `models.json` (custom providers,
+models, and model overrides), and `get_available_models` (what the running
+agent actually exposes). `internal/modelcatalog` owns the merge and the
+minimal-edit rules for `enabledModels`: turning one model off expands only the
+pattern that covers it, preserves `:thinking` pins, and never touches patterns
+that match nothing. Writes go through `internal/config`, so a provider or
+model added in the terminal appears in Pie and the reverse. Models owns startup
+model and thinking defaults, the context cap, enabled patterns, and per-model
+overrides; Providers owns `defaultProvider`, credentials, endpoints, and
+usage. The context-window cap in `pie-model-settings.json` is shared, but only
+Pie's server applies it to a runtime; the terminal client cannot re-clamp pi's
+in-process model list.
 
 ## Startup and shutdown
 

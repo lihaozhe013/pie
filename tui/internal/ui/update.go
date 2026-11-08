@@ -29,6 +29,8 @@ func settingsTabID(name string) (string, bool) {
 		return "appearance", true
 	case "models", "model":
 		return "models", true
+	case "providers", "provider":
+		return "providers", true
 	case "tools", "tool", "presets", "preset":
 		return "tools", true
 	case "skills", "skill":

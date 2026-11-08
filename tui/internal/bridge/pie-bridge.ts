@@ -145,6 +145,628 @@ function providerAuthMethods(provider) {
   };
 }
 
+// Provider usage follows Pie's provider-usage module: the same endpoints,
+// origin checks, and response shapes. The bridge resolves credentials through
+// pi's ModelRuntime, so OAuth refreshes and provider-scoped env stay inside pi.
+// Keep the keys in sync with tui/internal/providerusage.
+const USAGE_ENDPOINTS = {
+  "openai-codex": "https://chatgpt.com/backend-api/wham/usage",
+  deepseek: "https://api.deepseek.com/user/balance",
+  openrouter: "https://openrouter.ai/api/v1/key",
+  moonshotai: "https://api.moonshot.ai/v1/users/me/balance",
+  "moonshotai-cn": "https://api.moonshot.cn/v1/users/me/balance",
+  minimax: "https://api.minimax.io",
+  "minimax-cn": "https://api.minimaxi.com",
+  "vercel-ai-gateway": "https://ai-gateway.vercel.sh/v1/credits",
+  "opencode-go": "https://opencode.ai/zen/go/v1/usage",
+  "kimi-coding": "https://api.kimi.com/coding/v1/usages",
+};
+
+const USAGE_PROVIDER_NAMES = {
+  "openai-codex": "OpenAI Codex",
+  deepseek: "DeepSeek",
+  openrouter: "OpenRouter",
+  moonshotai: "Moonshot AI",
+  "moonshotai-cn": "Moonshot AI CN",
+  minimax: "MiniMax",
+  "minimax-cn": "MiniMax CN",
+  "vercel-ai-gateway": "Vercel AI Gateway",
+  "opencode-go": "OpenCode Go",
+  "kimi-coding": "Kimi For Coding",
+};
+
+const USAGE_CURRENCY = {
+  moonshotai: "USD",
+  "moonshotai-cn": "CNY",
+  minimax: "USD",
+  "minimax-cn": "CNY",
+};
+
+const USAGE_TIMEOUT_MS = 15_000;
+const USAGE_MAX_BODY = 65_536;
+
+function usageIsRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function usageRecord(value) {
+  return usageIsRecord(value) ? value : undefined;
+}
+
+function usageString(value) {
+  if (typeof value !== "string") return undefined;
+  const cleaned = value
+    .replace(/[\u0000-\u001f\u007f]/gu, "")
+    .trim()
+    .slice(0, 80);
+  return cleaned || undefined;
+}
+
+function usageNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() && Number.isFinite(Number(value))) return Number(value);
+  return undefined;
+}
+
+function usageNonnegative(value) {
+  const result = usageNumber(value);
+  return result !== undefined && result >= 0 ? result : undefined;
+}
+
+function usageNonnegativeInteger(value) {
+  const result = usageNonnegative(value);
+  return result !== undefined && Number.isSafeInteger(result) ? result : undefined;
+}
+
+function usageDecimal(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && /^-?(?:0|[1-9]\d*)(?:\.\d+)?$/u.test(value) && value.length <= 64) {
+    return value;
+  }
+  return undefined;
+}
+
+function usageEpochSeconds(value) {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.floor(value >= 1_000_000_000_000 ? value / 1_000 : value);
+  }
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1_000) : undefined;
+}
+
+function usageClamp(value) {
+  return Math.min(100, Math.max(0, value));
+}
+
+function usageBearerToken(value) {
+  const match = value?.match(/^Bearer\s+(.+)$/i);
+  return match?.[1];
+}
+
+function usageWindowLabel(seconds) {
+  if (!seconds || seconds <= 0) return "Limit";
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes >= 10_080) return "Weekly";
+  if (minutes >= 60) return `${Math.round(minutes / 60)}h`;
+  return `${minutes}m`;
+}
+
+function isOfficialUsageOrigin(providerId, baseUrl) {
+  if (!baseUrl) return false;
+  try {
+    return new URL(baseUrl).origin === new URL(USAGE_ENDPOINTS[providerId]).origin;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchUsageJson(providerId, auth) {
+  if (auth.baseUrl && !isOfficialUsageOrigin(providerId, auth.baseUrl)) {
+    throw new Error("A custom provider origin cannot be used for official usage queries.");
+  }
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(auth.headers ?? {})) {
+    if (typeof value === "string") headers.set(name, value);
+  }
+  if (!headers.has("authorization") && auth.apiKey) {
+    headers.set("Authorization", `Bearer ${auth.apiKey}`);
+  }
+
+  let endpoint = USAGE_ENDPOINTS[providerId];
+  if (providerId === "minimax" || providerId === "minimax-cn") {
+    const token = usageBearerToken(headers.get("authorization")) ?? auth.apiKey;
+    endpoint += token?.startsWith("sk-api-") ? "/account/query_balance" : "/v1/token_plan/remains";
+  }
+  const response = await fetch(endpoint, {
+    headers,
+    redirect: "error",
+    signal: AbortSignal.timeout(USAGE_TIMEOUT_MS),
+  });
+  const body = await response.text();
+  if (body.length > USAGE_MAX_BODY) throw new Error("Usage response was too large.");
+  if (!response.ok) throw new Error(`Usage endpoint returned ${response.status}.`);
+  const parsed = JSON.parse(body);
+  if (!usageIsRecord(parsed)) throw new Error("Usage response was not an object.");
+  return parsed;
+}
+
+async function queryProviderUsage(ctx, providerId) {
+  if (!USAGE_ENDPOINTS[providerId]) {
+    return { providerId, status: "query-failed", message: "Unsupported provider." };
+  }
+  const provider = ctx.modelRegistry.getProvider(providerId);
+  let firstModel;
+  try {
+    firstModel = provider?.getModels?.()[0];
+  } catch {
+    firstModel = undefined;
+  }
+  const baseUrl = provider?.baseUrl ?? firstModel?.baseUrl;
+  if (!provider || !isOfficialUsageOrigin(providerId, baseUrl)) {
+    return { providerId, status: "query-failed", message: "The provider usage query failed." };
+  }
+  let resolved;
+  try {
+    resolved =
+      typeof ctx.modelRegistry.getProviderAuth === "function"
+        ? await ctx.modelRegistry.getProviderAuth(providerId)
+        : await ctx.modelRegistry.runtime?.getAuth?.(providerId);
+  } catch {
+    return { providerId, status: "auth-unavailable", message: "Provider authentication is unavailable." };
+  }
+  if (!resolved) {
+    return { providerId, status: "auth-unavailable", message: "Connect this provider before querying usage." };
+  }
+  try {
+    const payload = await fetchUsageJson(providerId, resolved.auth);
+    return { providerId, status: "ready", report: normalizeUsage(providerId, payload, Date.now()) };
+  } catch {
+    return { providerId, status: "query-failed", message: "The provider usage query failed." };
+  }
+}
+
+function normalizeUsage(providerId, payload, capturedAt) {
+  switch (providerId) {
+    case "openai-codex":
+      return normalizeCodexUsage(payload, capturedAt);
+    case "deepseek":
+      return normalizeDeepSeekUsage(payload, capturedAt);
+    case "openrouter":
+      return normalizeOpenRouterUsage(payload, capturedAt);
+    case "vercel-ai-gateway":
+      return normalizeVercelUsage(payload, capturedAt);
+    case "moonshotai":
+    case "moonshotai-cn":
+      return normalizeMoonshotUsage(providerId, payload, capturedAt);
+    case "opencode-go":
+      return normalizeOpenCodeGoUsage(payload, capturedAt);
+    case "kimi-coding":
+      return normalizeKimiCodingUsage(payload, capturedAt);
+    case "minimax":
+    case "minimax-cn":
+      return normalizeMiniMaxUsage(providerId, payload, capturedAt);
+  }
+  throw new Error("Unsupported provider.");
+}
+
+function normalizeCodexUsage(payload, capturedAt) {
+  const buckets = [];
+  const addGroup = (group, groupLabel, groupId) => {
+    for (const [position, raw] of [
+      ["primary", group.primary_window],
+      ["secondary", group.secondary_window],
+    ]) {
+      const window = usageRecord(raw);
+      const used = usageNumber(window?.used_percent);
+      if (used === undefined) continue;
+      const seconds = usageNumber(window?.limit_window_seconds);
+      buckets.push({
+        id: `${groupId}:${position}`,
+        label: usageWindowLabel(seconds),
+        ...(groupId === "codex" ? {} : { groupLabel }),
+        used: usageClamp(used),
+        remaining: 100 - usageClamp(used),
+        limit: 100,
+        unit: "percent",
+        ...(seconds && seconds > 0 ? { windowMinutes: Math.ceil(seconds / 60) } : {}),
+        ...(usageNumber(window?.reset_at) !== undefined
+          ? { resetsAt: Math.floor(usageNumber(window?.reset_at)) }
+          : {}),
+      });
+    }
+  };
+  const rateLimit = usageRecord(payload.rate_limit);
+  if (rateLimit) addGroup(rateLimit, "Codex", "codex");
+  const additional = Array.isArray(payload.additional_rate_limits) ? payload.additional_rate_limits : [];
+  additional.forEach((item, index) => {
+    const value = usageRecord(item);
+    const rate = usageRecord(value?.rate_limit);
+    if (rate) {
+      addGroup(
+        rate,
+        usageString(value?.limit_name) ?? `Limit ${index + 1}`,
+        usageString(value?.metered_feature) ?? `additional-${index}`,
+      );
+    }
+  });
+  const metrics = [];
+  const credits = usageRecord(payload.credits);
+  if (credits?.unlimited === true) {
+    metrics.push({ id: "credits", label: "Credits", value: "Unlimited" });
+  } else if (usageNumber(credits?.balance) !== undefined) {
+    metrics.push({ id: "credits", label: "Credits", value: usageNumber(credits?.balance), unit: "count" });
+  }
+  if (!buckets.length && !metrics.length) throw new Error("Codex returned no usage data.");
+  return {
+    providerId: "openai-codex",
+    providerName: USAGE_PROVIDER_NAMES["openai-codex"],
+    capturedAt,
+    buckets,
+    metrics,
+  };
+}
+
+function normalizeDeepSeekUsage(payload, capturedAt) {
+  const metrics = [
+    {
+      id: "availability",
+      label: "API calls",
+      value: payload.is_available === true ? "Available" : "Unavailable",
+    },
+  ];
+  const rows = Array.isArray(payload.balance_infos) ? payload.balance_infos : [];
+  for (const row of rows) {
+    const value = usageRecord(row);
+    const currency =
+      value?.currency === "CNY" || value?.currency === "USD" ? value.currency : undefined;
+    if (!currency) continue;
+    for (const [id, label, field] of [
+      ["total", "Total balance", "total_balance"],
+      ["granted", "Granted balance", "granted_balance"],
+      ["topped-up", "Topped-up balance", "topped_up_balance"],
+    ]) {
+      const amount = usageDecimal(value?.[field]);
+      if (amount !== undefined) {
+        metrics.push({
+          id: `${currency.toLowerCase()}-${id}`,
+          label,
+          value: amount,
+          unit: "currency",
+          currency,
+        });
+      }
+    }
+  }
+  if (rows.length === 0) throw new Error("DeepSeek returned no balance data.");
+  return {
+    providerId: "deepseek",
+    providerName: USAGE_PROVIDER_NAMES.deepseek,
+    capturedAt,
+    buckets: [],
+    metrics,
+  };
+}
+
+function normalizeOpenRouterUsage(payload, capturedAt) {
+  const data = usageRecord(payload.data);
+  if (!data) throw new Error("OpenRouter returned no key data.");
+  const buckets = [];
+  const limit = usageNonnegative(data.limit);
+  const remaining = usageNonnegative(data.limit_remaining);
+  if (limit !== undefined) {
+    buckets.push({
+      id: "key-limit",
+      label: "Key limit",
+      limit,
+      ...(remaining !== undefined ? { remaining, used: Math.max(0, limit - remaining) } : {}),
+      unit: "currency",
+      currency: "USD",
+      ...(usageString(data.limit_reset) ? { period: usageString(data.limit_reset) } : {}),
+    });
+  }
+  const metrics = [];
+  for (const [id, label, field] of [
+    ["daily", "Usage today", "usage_daily"],
+    ["weekly", "Usage this week", "usage_weekly"],
+    ["monthly", "Usage this month", "usage_monthly"],
+    ["total", "All-time usage", "usage"],
+  ]) {
+    const amount = usageNonnegative(data[field]);
+    if (amount !== undefined) {
+      metrics.push({ id, label, value: amount, unit: "currency", currency: "USD" });
+    }
+  }
+  if (!buckets.length && !metrics.length) throw new Error("OpenRouter returned no usage data.");
+  return {
+    providerId: "openrouter",
+    providerName: USAGE_PROVIDER_NAMES.openrouter,
+    capturedAt,
+    buckets,
+    metrics,
+  };
+}
+
+function normalizeVercelUsage(payload, capturedAt) {
+  const balance = usageDecimal(payload.balance);
+  const used = usageDecimal(payload.total_used);
+  if (balance === undefined && used === undefined) {
+    throw new Error("Vercel returned no credit data.");
+  }
+  const metrics = [];
+  if (balance !== undefined) {
+    metrics.push({ id: "balance", label: "Credit balance", value: balance, unit: "currency", currency: "USD" });
+  }
+  if (used !== undefined) {
+    metrics.push({ id: "spent", label: "Lifetime spend", value: used, unit: "currency", currency: "USD" });
+  }
+  return {
+    providerId: "vercel-ai-gateway",
+    providerName: USAGE_PROVIDER_NAMES["vercel-ai-gateway"],
+    capturedAt,
+    buckets: [],
+    metrics,
+  };
+}
+
+function normalizeMoonshotUsage(providerId, payload, capturedAt) {
+  const data = usageRecord(payload.data);
+  if (payload.code !== 0 || payload.status !== true || !data) {
+    throw new Error("Moonshot returned an unsuccessful response.");
+  }
+  const metrics = [
+    ["available", "Available balance", data.available_balance],
+    ["voucher", "Voucher balance", data.voucher_balance],
+    ["cash", "Cash balance", data.cash_balance],
+  ].flatMap(([id, label, value]) => {
+    const amount = usageNumber(value);
+    return amount === undefined
+      ? []
+      : [
+          {
+            id: String(id),
+            label: String(label),
+            value: String(amount),
+            unit: "currency",
+            currency: USAGE_CURRENCY[providerId],
+          },
+        ];
+  });
+  if (!metrics.length) throw new Error("Moonshot returned no balance data.");
+  return {
+    providerId,
+    providerName: USAGE_PROVIDER_NAMES[providerId],
+    capturedAt,
+    buckets: [],
+    metrics,
+  };
+}
+
+function normalizeMiniMaxUsage(providerId, payload, capturedAt) {
+  const base = usageRecord(payload.base_resp);
+  if (base && base.status_code !== 0) throw new Error("MiniMax returned an unsuccessful response.");
+  if (Array.isArray(payload.model_remains)) {
+    const buckets = [];
+    for (const [index, rowValue] of payload.model_remains.entries()) {
+      const row = usageRecord(rowValue);
+      if (!row) continue;
+      const groupLabel = usageString(row.model_name) ?? `Quota ${index + 1}`;
+      addMiniMaxUsageWindow(
+        buckets,
+        row,
+        groupLabel,
+        "interval",
+        "current_interval_remaining_percent",
+        "current_interval_usage_count",
+        "current_interval_total_count",
+        "end_time",
+        "start_time",
+      );
+      addMiniMaxUsageWindow(
+        buckets,
+        row,
+        groupLabel,
+        "weekly",
+        "current_weekly_remaining_percent",
+        "current_weekly_usage_count",
+        "current_weekly_total_count",
+        "weekly_end_time",
+        "weekly_start_time",
+      );
+    }
+    if (!buckets.length) throw new Error("MiniMax returned no quota data.");
+    return {
+      providerId,
+      providerName: USAGE_PROVIDER_NAMES[providerId],
+      capturedAt,
+      buckets,
+      metrics: [],
+    };
+  }
+  const metrics = [
+    ["available", "Available balance", payload.available_amount],
+    ["cash", "Cash balance", payload.cash_balance],
+    ["voucher", "Voucher balance", payload.voucher_balance],
+    ["credit", "Credit balance", payload.credit_balance],
+  ].flatMap(([id, label, value]) => {
+    const amount = usageDecimal(value);
+    return amount === undefined
+      ? []
+      : [
+          {
+            id: String(id),
+            label: String(label),
+            value: amount,
+            unit: "currency",
+            currency: USAGE_CURRENCY[providerId],
+          },
+        ];
+  });
+  if (!metrics.length) throw new Error("MiniMax returned no balance data.");
+  return {
+    providerId,
+    providerName: USAGE_PROVIDER_NAMES[providerId],
+    capturedAt,
+    buckets: [],
+    metrics,
+  };
+}
+
+function addMiniMaxUsageWindow(
+  buckets,
+  row,
+  groupLabel,
+  suffix,
+  percentField,
+  countField,
+  totalField,
+  endField,
+  startField,
+) {
+  const status = usageNumber(
+    row[`${suffix === "interval" ? "current_interval" : "current_weekly"}_status`],
+  );
+  const end = usageNumber(row[endField]);
+  const start = usageNumber(row[startField]);
+  const percent = usageNonnegative(row[percentField]);
+  if (status === 3) {
+    buckets.push({
+      id: `${groupLabel}:${suffix}`,
+      label: suffix === "weekly" ? "Weekly" : "Rolling",
+      groupLabel,
+      remaining: 100,
+      unit: "percent",
+      period: "Unlimited",
+    });
+    return;
+  }
+  const total = usageNonnegativeInteger(row[totalField]);
+  const count = usageNonnegativeInteger(row[countField]);
+  if (total === undefined && percent === undefined) return;
+  const windowMinutes =
+    end !== undefined && start !== undefined ? Math.max(1, Math.round((end - start) / 60_000)) : undefined;
+  const resetsAt = end !== undefined ? Math.floor(end / 1_000) : undefined;
+  if (total && count !== undefined) {
+    let remaining = count;
+    if (percent !== undefined) {
+      const asRemaining = (count / total) * 100;
+      const asUsed = ((total - count) / total) * 100;
+      if (Math.abs(asUsed - percent) < Math.abs(asRemaining - percent)) remaining = total - count;
+    }
+    buckets.push({
+      id: `${groupLabel}:${suffix}`,
+      label: suffix === "weekly" ? "Weekly" : "Rolling",
+      groupLabel,
+      used: total - remaining,
+      remaining,
+      limit: total,
+      unit: "count",
+      ...(windowMinutes ? { windowMinutes } : {}),
+      ...(resetsAt ? { resetsAt } : {}),
+    });
+    return;
+  }
+  if (percent === undefined) return;
+  buckets.push({
+    id: `${groupLabel}:${suffix}`,
+    label: suffix === "weekly" ? "Weekly" : "Rolling",
+    groupLabel,
+    used: 100 - usageClamp(percent),
+    remaining: usageClamp(percent),
+    limit: 100,
+    unit: "percent",
+    ...(windowMinutes ? { windowMinutes } : {}),
+    ...(resetsAt ? { resetsAt } : {}),
+  });
+}
+
+function normalizeOpenCodeGoUsage(payload, capturedAt) {
+  const usage = usageRecord(payload.usage) ?? payload;
+  const labels = { rolling: "Rolling", weekly: "Weekly", monthly: "Monthly" };
+  const buckets = [];
+  for (const [id, raw] of Object.entries(usage)) {
+    const window = usageRecord(raw);
+    if (!window) continue;
+    const percent = usageNonnegative(window.percent ?? window.usagePercent ?? window.usage_percent);
+    if (percent === undefined) continue;
+    const resetsAt = usageEpochSeconds(window.resetsAt ?? window.resetAt ?? window.resets_at ?? window.reset_at);
+    buckets.push({
+      id,
+      label: labels[id] ?? id,
+      used: usageClamp(percent),
+      remaining: 100 - usageClamp(percent),
+      limit: 100,
+      unit: "percent",
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+    });
+  }
+  if (!buckets.length) throw new Error("OpenCode Go returned no usage data.");
+  return {
+    providerId: "opencode-go",
+    providerName: USAGE_PROVIDER_NAMES["opencode-go"],
+    capturedAt,
+    buckets,
+    metrics: [],
+  };
+}
+
+const USAGE_KIMI_TIME_UNITS = new Map([
+  ["TIME_UNIT_SECOND", 1],
+  ["TIME_UNIT_MINUTE", 60],
+  ["TIME_UNIT_HOUR", 3_600],
+  ["TIME_UNIT_DAY", 86_400],
+]);
+
+function normalizeKimiCodingUsage(payload, capturedAt) {
+  const buckets = [];
+  const addBucket = (id, label, detail, seconds) => {
+    const limit = usageNonnegativeInteger(detail?.limit);
+    const used = usageNonnegativeInteger(detail?.used);
+    const remaining =
+      usageNonnegativeInteger(detail?.remaining) ??
+      (limit !== undefined && used !== undefined ? Math.max(0, limit - used) : undefined);
+    if (limit === undefined || remaining === undefined) return;
+    const resetsAt = usageEpochSeconds(detail?.resetTime);
+    buckets.push({
+      id,
+      label,
+      used: used ?? Math.max(0, limit - remaining),
+      remaining,
+      limit,
+      unit: "count",
+      ...(seconds ? { windowMinutes: Math.ceil(seconds / 60) } : {}),
+      ...(resetsAt !== undefined ? { resetsAt } : {}),
+    });
+  };
+  addBucket("usage", "Overall", usageRecord(payload.usage));
+  const limits = Array.isArray(payload.limits) ? payload.limits : [];
+  limits.forEach((item, index) => {
+    const value = usageRecord(item);
+    const window = usageRecord(value?.window);
+    const duration = usageNonnegative(window?.duration);
+    const unitSeconds = USAGE_KIMI_TIME_UNITS.get(usageString(window?.timeUnit) ?? "");
+    const seconds = duration !== undefined && unitSeconds ? duration * unitSeconds : undefined;
+    addBucket(`limit-${index}`, usageWindowLabel(seconds), usageRecord(value?.detail), seconds);
+  });
+  if (!buckets.length) throw new Error("Kimi returned no usage data.");
+  const metrics = [];
+  const parallel = usageNonnegativeInteger(usageRecord(payload.parallel)?.limit);
+  if (parallel !== undefined) {
+    metrics.push({ id: "parallel", label: "Parallel requests", value: parallel, unit: "count" });
+  }
+  const level = usageString(usageRecord(usageRecord(payload.user)?.membership)?.level);
+  if (level) {
+    metrics.push({ id: "membership", label: "Membership", value: level.replace(/^LEVEL_/u, "") });
+  }
+  return {
+    providerId: "kimi-coding",
+    providerName: USAGE_PROVIDER_NAMES["kimi-coding"],
+    capturedAt,
+    buckets,
+    metrics,
+  };
+}
+
 function authStatusSnapshot(status) {
   if (!status) return null;
   return {
@@ -477,6 +1099,23 @@ export default function (pi) {
         });
       }
       fs.writeFileSync(path, JSON.stringify({ version: 1, providers }, null, 2), { mode: 0o600 });
+    },
+  });
+
+  pi.registerCommand("pie-usage", {
+    description: "Query a provider's subscription usage (pie internal)",
+    handler: async (args, ctx) => {
+      const text = String(args || "").trim();
+      const split = text.indexOf(" ");
+      const providerId = split < 0 ? text : text.slice(0, split);
+      const path = split < 0 ? "" : text.slice(split + 1).trim();
+      if (!providerId || !path || path.includes("\n") || !USAGE_ENDPOINTS[providerId]) {
+        ctx.ui.notify("pie-usage: expected a supported provider and a file path", "error");
+        return;
+      }
+      const result = await queryProviderUsage(ctx, providerId);
+      const fs = await import("node:fs");
+      fs.writeFileSync(path, JSON.stringify(result, null, 2), { mode: 0o600 });
     },
   });
 

@@ -750,6 +750,8 @@ func (m *Model) openSettingsAt(tabID string) tea.Cmd {
 	m.reloadConfig()
 	m.presetDraft = nil
 	m.settingsPanel = nil
+	m.panelProvider = ""
+	m.panelUsageProvider = ""
 	m.openSettingsOverlay()
 	if m.settingsPanel != nil {
 		m.settingsPanel.selectTab(tabID)

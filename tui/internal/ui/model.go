@@ -295,6 +295,13 @@ type Model struct {
 	// panelProvider is the provider whose detail panel is open, so a sign-in
 	// result can rebuild it with the new credential state.
 	panelProvider string
+	// panelUsageProvider is the provider whose usage panel is open, so a reply
+	// can repaint it without a second request.
+	panelUsageProvider string
+	// panelTab is the settings tab a single-panel sub-view returns to.
+	panelTab string
+	// providerUsage caches the last usage reply per provider.
+	providerUsage map[string]*usageSnapshot
 	// pendingAuthStep is a sign-in step that arrived while a dialog was open;
 	// it is shown once that dialog closes.
 	pendingAuthStep *overlay
@@ -827,6 +834,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.providerAuthErr = nil
 		m.reloadCatalog()
 		m.refreshAuthPanels()
+		return m, nil
+
+	case providerUsageMsg:
+		m.applyProviderUsage(msg)
 		return m, nil
 
 	case openURLMsg:
