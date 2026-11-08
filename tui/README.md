@@ -32,9 +32,10 @@ subagents, no second agent loop, no parallel protocol.
 
 ## Features
 
-- A startup welcome panel with a hand-drawn PIE wordmark, the working
-  directory, model, thinking level, and session name; the first key press
-  dismisses it
+- A startup card at the top of the conversation with a hand-drawn PIE
+  wordmark, the working directory, model, thinking level, and session name; it
+  is part of the scrollback, so it stays put and scrolls away with the
+  conversation instead of covering it and vanishing on the first key press
 - A post-exit card with the same wordmark, the session name, and a
   `pie --session <file>` line for resuming the conversation just left
 - Header line with the current directory (`~`-collapsed), model, thinking

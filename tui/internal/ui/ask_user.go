@@ -80,7 +80,6 @@ func (m *Model) openAsk(request *rpc.ExtensionUIRequestEvent) {
 		return
 	}
 
-	m.dismissSplash()
 	if m.transcript != nil {
 		m.transcript.ClearSelection()
 	}

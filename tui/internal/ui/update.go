@@ -46,7 +46,6 @@ func settingsTabID(name string) (string, bool) {
 func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 	switch ev := event.(type) {
 	case *rpc.AgentStartEvent:
-		m.dismissSplash()
 		m.busy = true
 		m.stream = streamState{}
 		m.activity.begin()
@@ -482,6 +481,10 @@ func (m *Model) applyToolResult(message rpc.Message) {
 // loadHistory replays messages returned by get_messages into the transcript.
 func (m *Model) loadHistory(messages []rpc.Message) {
 	m.transcript.Clear()
+	// The startup card opens the scrollback. It is the first entry of the
+	// conversation, so a resumed session keeps its history in view while the
+	// card stays available by scrolling up.
+	m.transcript.Add(m.welcomeBlock())
 	for _, message := range messages {
 		switch message.Role {
 		case "user":
@@ -532,10 +535,6 @@ func (m *Model) loadHistory(messages []rpc.Message) {
 
 // handleKey routes one key press.
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	// The welcome panel is a landing state: the first key press both dismisses
-	// it and reaches whatever the key normally does.
-	m.dismissSplash()
-
 	// A key press ends the mouse selection, including a drag whose release
 	// event was lost outside the terminal window.
 	if m.transcript != nil && m.transcript.HasSelection() {
@@ -794,8 +793,6 @@ func (m *Model) dispatchCommand(text string) tea.Cmd {
 	if text == "" || m.disconnected || m.fatal != "" {
 		return nil
 	}
-
-	m.dismissSplash()
 
 	if strings.HasPrefix(text, "/") {
 		if cmd, handled := m.runSlash(text); handled {
@@ -1732,6 +1729,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.currentMode = ""
 		m.presetBeforePlan = ""
 		m.logEntries = nil
+		m.transcript.Add(m.welcomeBlock())
 		m.addNotice("started a new session")
 		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries())
 
@@ -1888,7 +1886,6 @@ func (m *Model) openExtensionOverlay(request *rpc.ExtensionUIRequestEvent) {
 }
 
 func (m *Model) openOverlay(o *overlay) {
-	m.dismissSplash()
 	if m.transcript != nil {
 		m.transcript.ClearSelection()
 	}
@@ -2200,7 +2197,6 @@ func (m *Model) answerInput(value string) tea.Cmd {
 
 // addNotice appends an informational block.
 func (m *Model) addNotice(text string) {
-	m.dismissSplash()
 	m.transcript.Add(newBlock(blockNotice, text))
 	m.followOutput()
 }
@@ -2218,7 +2214,6 @@ func (m *Model) addError(text string) {
 	if strings.TrimSpace(text) == "" {
 		return
 	}
-	m.dismissSplash()
 	m.transcript.Add(newBlock(blockError, text))
 	m.transcript.ScrollToBottom()
 }

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// pieWordmark is the hand-drawn block logo shown by the welcome panel and the
+// pieWordmark is the hand-drawn block logo shown by the startup card and the
 // post-exit card. Each row stores the P, I, and E glyphs separately so the
 // letters can carry their own shade of the theme accent.
 var pieWordmark = [][3]string{
@@ -25,20 +25,14 @@ const wordmarkColumns = 8 + 1 + 3 + 1 + 8
 const splashTitleText = "PIE"
 
 // renderWordmark colours and joins the three letters of every row.
-func (m *Model) renderWordmark() []string {
+func renderWordmark(st styles) []string {
 	lines := make([]string, 0, len(pieWordmark))
 	for _, row := range pieWordmark {
-		lines = append(lines, m.styles.wordmarkP.Render(row[0])+" "+
-			m.styles.wordmarkI.Render(row[1])+" "+
-			m.styles.wordmarkE.Render(row[2]))
+		lines = append(lines, st.wordmarkP.Render(row[0])+" "+
+			st.wordmarkI.Render(row[1])+" "+
+			st.wordmarkE.Render(row[2]))
 	}
 	return lines
-}
-
-// dismissSplash hides the welcome panel once the user takes over. It is safe
-// to call when the panel is already gone.
-func (m *Model) dismissSplash() {
-	m.splash = false
 }
 
 // splashTagline describes what the client is and which build is running.
@@ -72,33 +66,58 @@ func (m *Model) splashModel() string {
 	return strings.Join(parts, " · ")
 }
 
-// splashMeta is the aligned information block: where the session runs, which
-// model answers, and what the conversation is called.
-func (m *Model) splashMeta() []string {
+// welcomeCard is the plain content of the startup card. The block stores the
+// facts instead of pre-rendered rows so the card follows the frame width and
+// the transcript height, and a theme change recolours it like any other block.
+type welcomeCard struct {
+	Tagline  string
+	Greeting string
+	CWD      string
+	Model    string
+	Session  string
+}
+
+// welcomeBlock snapshots the session facts the startup card shows.
+func (m *Model) welcomeBlock() *block {
+	return &block{
+		kind:     blockWelcome,
+		revision: 1,
+		welcome: &welcomeCard{
+			Tagline:  m.splashTagline(),
+			Greeting: m.splashGreeting(),
+			CWD:      displayPath(m.opts.CWD),
+			Model:    m.splashModel(),
+			Session:  strings.TrimSpace(m.state.SessionName),
+		},
+	}
+}
+
+// welcomeMeta is the aligned information block inside the startup card.
+func welcomeMeta(st styles, card *welcomeCard) []string {
 	const labelWidth = 8
 	label := func(text string) string {
-		return m.styles.splashLabel.Render(fmt.Sprintf("%-*s", labelWidth, text)) + "  "
+		return st.splashLabel.Render(fmt.Sprintf("%-*s", labelWidth, text)) + "  "
 	}
 
 	lines := make([]string, 0, 3)
-	if cwd := displayPath(m.opts.CWD); cwd != "" {
-		lines = append(lines, label("cwd")+m.styles.splashValue.Render(cwd))
+	if card.CWD != "" {
+		lines = append(lines, label("cwd")+st.splashValue.Render(card.CWD))
 	}
-	if model := m.splashModel(); model != "" {
-		lines = append(lines, label("model")+m.styles.splashValue.Render(model))
+	if card.Model != "" {
+		lines = append(lines, label("model")+st.splashValue.Render(card.Model))
 	}
-	if name := strings.TrimSpace(m.state.SessionName); name != "" {
-		lines = append(lines, label("session")+m.styles.splashTitle.Render(name))
+	if card.Session != "" {
+		lines = append(lines, label("session")+st.splashTitle.Render(card.Session))
 	}
 	return lines
 }
 
-// splashHint is the single line of first-run guidance under the information
-// block, with the command names picked out in the accent colour. Narrow
-// terminals only keep the part that fits.
-func (m *Model) splashHint(width int) string {
-	muted := m.styles.splashMuted
-	key := m.styles.accent
+// welcomeHint is the guidance line of the startup card, with the command names
+// picked out in the accent colour. Narrow terminals only keep the part that
+// fits.
+func welcomeHint(st styles, width int) string {
+	muted := st.splashMuted
+	key := st.accent
 	switch {
 	case width >= 66:
 		return muted.Render("Type a prompt to start  ·  ") +
@@ -114,151 +133,47 @@ func (m *Model) splashHint(width int) string {
 	}
 }
 
-// splashDismissLine is the closing hint on the welcome panel.
-func (m *Model) splashDismissLine(width int) string {
-	switch {
-	case width >= 28:
-		return m.styles.splashDismiss.Render("press any key to continue")
-	case width >= 18:
-		return m.styles.splashDismiss.Render("any key continues")
-	default:
+// renderWelcome draws the startup card at the top of the transcript. The card
+// is part of the conversation and left-aligned with it, so it scrolls out of
+// the way as the session grows instead of covering the scrollback and vanishing
+// on the first key press. Sections drop from the bottom up when the transcript
+// is too short for the whole card.
+func (t *transcript) renderWelcome(b *block, width int) string {
+	card := b.welcome
+	if card == nil {
 		return ""
 	}
-}
-
-// alignSplashBlock pads every row of one section to the width of its longest
-// row. Centering the rows then keeps their left edge, so the aligned labels of
-// the information block stay aligned.
-func alignSplashBlock(lines []string) []string {
-	width := 0
-	for _, line := range lines {
-		if w := lipglossWidth(line); w > width {
-			width = w
-		}
+	if width < 8 {
+		width = 8
 	}
-	aligned := make([]string, len(lines))
-	for i, line := range lines {
-		aligned[i] = line + strings.Repeat(" ", width-lipglossWidth(line))
-	}
-	return aligned
-}
 
-// splashSection assembles one layout candidate. spaced layouts separate the
-// logo, tagline, greeting, information, hint, and dismiss line with blank rows;
-// the compact fallback packs them together so a short terminal still gets the
-// important lines.
-func splashSection(logo []string, spaced bool, tagline, greeting string, meta []string, hint, dismiss string) []string {
+	logo := renderWordmark(t.styles)
+	if width < wordmarkColumns+2 || (t.height > 0 && t.height < len(pieWordmark)) {
+		logo = []string{t.styles.splashTitle.Render(splashTitleText)}
+	}
+
 	lines := append([]string{}, logo...)
-	gap := func() {
-		if spaced {
-			lines = append(lines, "")
+	sections := [][]string{
+		{t.styles.splashMuted.Render(card.Tagline)},
+		{t.styles.splashTitle.Render(card.Greeting)},
+		welcomeMeta(t.styles, card),
+		{welcomeHint(t.styles, width)},
+	}
+	for _, section := range sections {
+		if len(section) == 0 {
+			continue
 		}
-	}
-
-	gap()
-	lines = append(lines, tagline)
-	if greeting != "" {
-		gap()
-		lines = append(lines, greeting)
-	}
-	if len(meta) > 0 {
-		gap()
-		lines = append(lines, meta...)
-	}
-	if hint != "" {
-		gap()
-		lines = append(lines, hint)
-	}
-	if dismiss != "" {
-		gap()
-		lines = append(lines, dismiss)
-	}
-	return lines
-}
-
-// splashLines picks the richest layout that fits the transcript area.
-func (m *Model) splashLines(width, height int) []string {
-	logo := m.renderWordmark()
-	if width < wordmarkColumns+4 || height < len(pieWordmark) {
-		logo = []string{m.styles.splashTitle.Render(splashTitleText)}
-	}
-
-	taglineText := m.splashTagline()
-	if width < 28 {
-		taglineText = "pi client"
-	}
-	tagline := m.styles.splashMuted.Render(taglineText)
-	greeting := m.styles.splashTitle.Render(m.splashGreeting())
-	meta := m.splashMeta()
-	if len(meta) > 0 {
-		meta = alignSplashBlock(meta)
-	}
-	hint := m.splashHint(width)
-	dismiss := m.splashDismissLine(width)
-
-	firstMeta := meta
-	if len(firstMeta) > 1 {
-		firstMeta = firstMeta[:1]
-	}
-
-	candidates := [][]string{
-		splashSection(logo, true, tagline, greeting, meta, hint, dismiss),
-		splashSection(logo, true, tagline, greeting, meta, hint, ""),
-		splashSection(logo, true, tagline, "", meta, hint, ""),
-		splashSection(logo, true, tagline, "", firstMeta, hint, ""),
-		splashSection(logo, true, tagline, "", nil, hint, ""),
-		splashSection(logo, false, tagline, "", nil, hint, ""),
-		splashSection(logo, false, tagline, "", nil, "", ""),
-		logo,
-	}
-	for _, candidate := range candidates {
-		if len(candidate) <= height {
-			return candidate
-		}
-	}
-	return logo
-}
-
-// splashBody renders the welcome panel in the transcript area.
-func (m *Model) splashBody() []string {
-	width, height := m.frameWidth(), m.body
-	if width < 1 {
-		width = 1
-	}
-	if height < 1 {
-		return nil
-	}
-
-	content := m.splashLines(width, height)
-	lines := make([]string, 0, height)
-	top := (height - len(content)) / 2
-	if top < 0 {
-		top = 0
-	}
-	for i := 0; i < top; i++ {
-		lines = append(lines, "")
-	}
-	for _, line := range content {
-		if len(lines) >= height {
+		if t.height > 0 && len(lines)+1+len(section) > t.height {
 			break
 		}
-		lines = append(lines, centerSplashLine(line, width))
-	}
-	for len(lines) < height {
 		lines = append(lines, "")
+		lines = append(lines, section...)
 	}
-	return lines
-}
 
-// centerSplashLine truncates a styled row and centers it in the content
-// column.
-func centerSplashLine(line string, width int) string {
-	line = truncateLine(line, width)
-	padding := (width - lipglossWidth(line)) / 2
-	if padding <= 0 {
-		return line
+	for i, line := range lines {
+		lines[i] = truncateLine(line, width)
 	}
-	return strings.Repeat(" ", padding) + line
+	return strings.Join(lines, "\n")
 }
 
 // ExitSummary renders the card printed after the alternate screen closes. It
@@ -269,7 +184,7 @@ func (m *Model) ExitSummary() string {
 	if m.width > 0 && m.width < wordmarkColumns+2 {
 		lines = []string{m.styles.splashTitle.Render(splashTitleText)}
 	} else {
-		lines = m.renderWordmark()
+		lines = renderWordmark(m.styles)
 	}
 	lines = append(lines, "", m.styles.splashMuted.Render(m.splashTagline()), "")
 

@@ -267,11 +267,8 @@ type Model struct {
 	fatal        string
 	disconnected bool
 	ready        bool
-	// splash shows the startup welcome panel until the first key press or
-	// until the transcript takes over.
-	splash   bool
-	quitting bool
-	ctrlCAt  time.Time
+	quitting     bool
+	ctrlCAt      time.Time
 
 	dialogs []*rpc.ExtensionUIRequestEvent
 
@@ -396,7 +393,6 @@ func New(client Client, opts Options) *Model {
 		paths:        paths,
 		statuses:     map[string]string{},
 		showThinking: true,
-		splash:       true,
 		mouseOn:      opts.Mouse,
 		copyFn:       opts.Copy,
 	}
@@ -419,6 +415,9 @@ func New(client Client, opts Options) *Model {
 	}
 	m.styles = newStyles(themeFor(themeID))
 	m.transcript = newTranscript(m.styles)
+	// The startup card is the first entry of the conversation, not a panel that
+	// covers it; the handshake replaces it with the session facts.
+	m.transcript.Add(m.welcomeBlock())
 	m.composer = newComposer(m.styles)
 	m.completion = &completion{}
 	m.completion.SetItems(builtinCommands())
@@ -1073,10 +1072,9 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.state.IsStreaming {
-		// Attach to a run that was already in flight when we started. The live
-		// output owns the transcript area, so the welcome panel must not hide
-		// it.
-		m.dismissSplash()
+		// Attach to a run that was already in flight when we started. Its live
+		// output owns the scrollback, so the startup card gives up its place.
+		m.transcript.DropWelcome()
 		m.busy = true
 		m.activity.begin()
 		m.layout()
@@ -1274,10 +1272,6 @@ func (m *Model) bodyLines() []string {
 			lines = append(lines, "")
 		}
 		return lines
-	}
-
-	if m.splash {
-		return m.splashBody()
 	}
 
 	lines := strings.Split(m.transcript.View(), "\n")

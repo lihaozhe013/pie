@@ -114,8 +114,11 @@ storage; the resume-picker section below explains when it runs.
   language is unknown stays plain, the way the web UI treats it. Diff rows
   carry both the token colours and a theme-blended add/remove tint.
 - `styles.go` — the Lip Gloss palette and the glamour style derived from it.
-- `splash.go` — the hand-drawn PIE wordmark, the startup welcome panel, and the
-  post-exit card printed after the alternate screen closes.
+- `splash.go` — the hand-drawn PIE wordmark, the startup card that opens the
+  transcript, and the post-exit card printed after the alternate screen
+  closes. The startup card is a normal transcript block: left-aligned with
+  the conversation, it scrolls out of view instead of being dismissed on the
+  first key press.
 - `view.go` — small formatting helpers.
 
 ### Automatic titles

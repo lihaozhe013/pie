@@ -23,6 +23,7 @@ const (
 	blockDiff
 	blockNotice
 	blockError
+	blockWelcome
 )
 
 // blockStatus is the lifecycle of a tool or notice block.
@@ -50,6 +51,9 @@ type block struct {
 	diff    []diffLine // file mutation rows, already syntax-coloured
 	command []string   // shell command rows, already syntax-coloured
 	status  blockStatus
+	// welcome carries the startup card's plain content so it re-renders at the
+	// current width and height like any other block.
+	welcome *welcomeCard
 
 	collapsed bool
 	streaming bool
@@ -148,6 +152,16 @@ func (t *transcript) Clear() {
 
 // Blocks exposes the current blocks without copying.
 func (t *transcript) Blocks() []*block { return t.blocks }
+
+// DropWelcome removes the startup card, for a transcript a running turn is
+// about to take over.
+func (t *transcript) DropWelcome() {
+	if len(t.blocks) == 0 || t.blocks[0].kind != blockWelcome {
+		return
+	}
+	t.blocks = t.blocks[1:]
+	t.dirty = true
+}
 
 // MarkDirty schedules a re-render on the next View.
 func (t *transcript) MarkDirty() { t.dirty = true }
@@ -254,7 +268,10 @@ func (t *transcript) render(b *block) string {
 		width = 8
 	}
 
-	if !b.streaming && b.cache.valid && b.cache.revision == b.revision && b.cache.width == width {
+	// The welcome card sizes itself from the transcript height as well, which
+	// the per-block cache does not track, so it always renders fresh.
+	cacheable := b.kind != blockWelcome
+	if cacheable && !b.streaming && b.cache.valid && b.cache.revision == b.revision && b.cache.width == width {
 		return b.cache.value
 	}
 
@@ -274,12 +291,14 @@ func (t *transcript) render(b *block) string {
 		out = renderNotice(b.text, width, t.styles.notice)
 	case blockError:
 		out = renderNotice(b.text, width, t.styles.errorText)
+	case blockWelcome:
+		out = t.renderWelcome(b, width)
 	}
 
 	// Only finished blocks are cached: a streaming block re-renders every tick,
 	// and caching its intermediate output would let a stale segmented render
 	// win over the whole-document render when the stream ends.
-	if !b.streaming {
+	if cacheable && !b.streaming {
 		b.cache.value = out
 		b.cache.revision = b.revision
 		b.cache.width = width
