@@ -166,6 +166,69 @@ func (m *Model) resolvePresetArg(arg string) (string, bool) {
 	return "", false
 }
 
+// presetCycleSelections lists the presets Shift+Left and Shift+Right walk.
+// Plan is excluded because Shift+Tab toggles it and remembers the preset to
+// restore.
+func (m *Model) presetCycleSelections() []string {
+	selections := make([]string, 0, len(config.BuiltinPresets)+4)
+	for _, preset := range config.BuiltinPresets {
+		if preset.ID == "plan" {
+			continue
+		}
+		selections = append(selections, preset.ID)
+	}
+	if m.presetFile != nil {
+		for _, preset := range m.presetFile.Presets() {
+			selections = append(selections, config.CustomPresetPrefix+preset.ID)
+		}
+	}
+	return selections
+}
+
+// cyclePreset moves the session to the next or previous tool preset.
+func (m *Model) cyclePreset(delta int) tea.Cmd {
+	selections := m.presetCycleSelections()
+	if len(selections) == 0 {
+		return nil
+	}
+	current := m.currentPresetID()
+	index := -1
+	for i, selection := range selections {
+		if selection == current {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		// Plan and an unrecognized live selection have no place in the cycle;
+		// start from the end that matches the direction.
+		if delta < 0 {
+			index = len(selections)
+		}
+	}
+	next := (index + delta + len(selections)) % len(selections)
+	return m.applyPreset(selections[next])
+}
+
+// togglePlan enters plan mode or restores the preset that was active before
+// it. The plan selection itself is never restored from the saved preset, so a
+// stale preference cannot trap the toggle.
+func (m *Model) togglePlan() tea.Cmd {
+	if m.currentMode == "plan" || m.currentPresetID() == "plan" {
+		selection := m.presetBeforePlan
+		if selection == "" || selection == "plan" {
+			selection = "configured"
+			if m.prefs != nil {
+				if saved := m.prefs.ToolPreset(); saved != "" && saved != "plan" {
+					selection = saved
+				}
+			}
+		}
+		return m.applyPreset(selection)
+	}
+	return m.applyPreset("plan")
+}
+
 // applyPreset pins a tool set through the bridge and records the work mode.
 func (m *Model) applyPreset(selection string) tea.Cmd {
 	return m.applyPresetWithOptions(selection, false)
@@ -200,6 +263,11 @@ func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
 	targetMode := ""
 	if selection == "plan" {
 		targetMode = "plan"
+		if current := m.currentPresetID(); current != "" && current != "plan" {
+			m.presetBeforePlan = current
+		}
+	} else {
+		m.presetBeforePlan = ""
 	}
 	client := m.client
 	return func() tea.Msg {

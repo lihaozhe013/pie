@@ -118,6 +118,7 @@ type (
 	responseMsg struct {
 		action string
 		level  string
+		levels []string
 		resp   *rpc.Response
 		err    error
 	}
@@ -346,6 +347,9 @@ type Model struct {
 	selection      session.ToolSelection
 	hasSelection   bool
 	currentMode    string
+	// presetBeforePlan is the preset Shift+Tab restores when it leaves plan
+	// mode. It is cleared whenever a non-plan preset is applied.
+	presetBeforePlan string
 
 	goalAvailable bool
 	goalEnabled   bool

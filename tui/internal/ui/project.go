@@ -207,6 +207,7 @@ func (m *Model) applyProjectSwitch(msg projectSwitchedMsg) (tea.Model, tea.Cmd) 
 	m.selection = session.ToolSelection{}
 	m.hasSelection = false
 	m.currentMode = ""
+	m.presetBeforePlan = ""
 	m.goal = session.Goal{}
 	m.hasGoal = false
 	m.mcpSnapshot = mcp.Snapshot{}

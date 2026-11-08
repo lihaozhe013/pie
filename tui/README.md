@@ -173,8 +173,10 @@ the fallback when `pie` runs locally.
 | `ctrl+d` | delete the character under the cursor; quit when the editor is empty |
 | `ctrl+k` | pick a model |
 | `ctrl+g` | pick a tool preset |
+| `shift+left` / `shift+right` | cycle tool presets |
 | `ctrl+p` | open the command palette |
-| `shift+tab` | cycle the thinking level |
+| `shift+up` / `shift+down` | raise or lower the reasoning level |
+| `shift+tab` | toggle plan mode and restore the previous preset |
 | `ctrl+t` | show/hide thinking blocks |
 | `ctrl+o` | expand or collapse tool output and diffs |
 | `ctrl+l` | clear the scrollback |

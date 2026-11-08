@@ -634,7 +634,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 
 	case "shift+tab":
-		return m, m.cycleThinking()
+		return m, m.togglePlan()
+
+	case "shift+up":
+		return m, m.stepThinking(1)
+
+	case "shift+down":
+		return m, m.stepThinking(-1)
+
+	case "shift+left":
+		return m, m.cyclePreset(-1)
+
+	case "shift+right":
+		return m, m.cyclePreset(1)
 
 	case "ctrl+k":
 		return m, m.openModelPicker()
@@ -996,8 +1008,10 @@ func (m *Model) helpItems() []pickerItem {
 		{"ctrl+c", "interrupt; clear the prompt (up restores it); on empty, twice to quit"},
 		{"ctrl+k", "pick a model"},
 		{"ctrl+g", "pick a tool preset"},
+		{"shift+left / shift+right", "cycle tool presets"},
 		{"ctrl+p", "open the command palette"},
-		{"shift+tab", "cycle thinking level"},
+		{"shift+up / shift+down", "raise or lower the reasoning level"},
+		{"shift+tab", "toggle plan mode and restore the previous preset"},
 		{"ctrl+t", "toggle thinking blocks"},
 		{"ctrl+o", "expand tool output and diffs"},
 		{"ctrl+l", "clear the scrollback"},
@@ -1061,6 +1075,40 @@ func (m *Model) cycleThinking() tea.Cmd {
 		response, err := client.DoOK(ctx, rpc.CycleThinkingLevel())
 		return responseMsg{action: "thinking", resp: response, err: err}
 	}
+}
+
+// stepThinking raises or lowers the reasoning level by one supported step.
+// The handshake lists the levels the current model accepts; the configured
+// list is a fallback when pi reported none.
+func (m *Model) stepThinking(delta int) tea.Cmd {
+	if m.state.Model != nil && !m.state.Model.Reasoning {
+		m.setToast("this model does not support thinking levels")
+		return nil
+	}
+	levels := m.levels
+	if len(levels) == 0 {
+		levels = config.ThinkingLevels
+	}
+	index := -1
+	for i, level := range levels {
+		if level == m.state.ThinkingLevel {
+			index = i
+			break
+		}
+	}
+	if index < 0 && delta < 0 {
+		index = len(levels)
+	}
+	next := index + delta
+	if next < 0 || next >= len(levels) {
+		current := m.state.ThinkingLevel
+		if current == "" {
+			current = "none"
+		}
+		m.setToast("thinking: " + current + " · limit")
+		return nil
+	}
+	return m.setThinking(levels[next])
 }
 
 func (m *Model) setThinking(level string) tea.Cmd {
@@ -1173,10 +1221,18 @@ func (m *Model) setModelByLabel(label string) tea.Cmd {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				response, err := client.DoOK(ctx, rpc.SetModel(model.Provider, model.ID))
-				if err == nil && level != "" {
+				if err != nil {
+					return responseMsg{action: "model", resp: response, err: err}
+				}
+				if level != "" {
 					_, _ = client.DoOK(ctx, rpc.SetThinkingLevel(level))
 				}
-				return responseMsg{action: "model", resp: response, err: err}
+				var levels []string
+				if available, err := client.DoOK(ctx, rpc.GetAvailableThinkingLevels()); err == nil {
+					payload, _ := rpc.DecodeTyped[rpc.ThinkingLevelsPayload](available)
+					levels = payload.Levels
+				}
+				return responseMsg{action: "model", levels: levels, resp: response}
 			}
 		}
 	}
@@ -1617,6 +1673,9 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	case "model":
 		if model, err := rpc.DecodeTyped[rpc.ModelInfo](response); err == nil && model.ID != "" {
 			m.state.Model = &model
+			if len(msg.levels) > 0 {
+				m.levels = msg.levels
+			}
 			m.rememberModelSelection(model)
 			m.setToast("model: " + model.Label())
 			// The context window belongs to the model; reread it so the meter
@@ -1658,6 +1717,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.MessageCount = 0
 		m.hasSelection = false
 		m.currentMode = ""
+		m.presetBeforePlan = ""
 		m.logEntries = nil
 		m.addNotice("started a new session")
 		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries())
@@ -1674,6 +1734,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionName = ""
 		m.state.SessionFile = ""
 		m.state.SessionID = ""
+		m.presetBeforePlan = ""
 		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries())
 
 	case "compact":
