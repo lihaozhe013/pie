@@ -18,6 +18,11 @@ pie (Go, Bubble Tea)  ⇄  stdin/stdout JSONL  ⇄  pi --mode rpc (host binary)
 
 ## Features
 
+- A startup welcome panel with a hand-drawn PIE wordmark, the working
+  directory, model, thinking level, and session name; the first key press
+  dismisses it
+- A post-exit card with the same wordmark, the session name, and a
+  `pie --session <file>` line for resuming the conversation just left
 - Header line with the current directory (`~`-collapsed), model, thinking
   level, and session name
 - Streaming assistant output with incremental Markdown rendering

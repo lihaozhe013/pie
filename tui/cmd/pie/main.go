@@ -158,6 +158,10 @@ func run(args []string, stderr io.Writer) int {
 		return exitFailure
 	}
 
+	// The alternate screen is gone, so the card printed here stays visible at
+	// the shell prompt and records which conversation was just left.
+	fmt.Fprint(os.Stdout, "\n"+model.ExitSummary()+"\n")
+
 	shutdownStart := time.Now()
 	if err := client.Close(); err != nil {
 		logger.logf("shutdown: %v", err)

@@ -88,6 +88,15 @@ type styles struct {
 	muted           lipgloss.Style
 	accent          lipgloss.Style
 
+	wordmarkP     lipgloss.Style
+	wordmarkI     lipgloss.Style
+	wordmarkE     lipgloss.Style
+	splashTitle   lipgloss.Style
+	splashMuted   lipgloss.Style
+	splashLabel   lipgloss.Style
+	splashValue   lipgloss.Style
+	splashDismiss lipgloss.Style
+
 	editorBox         lipgloss.Style
 	editorHint        lipgloss.Style
 	editorText        lipgloss.Style
@@ -136,6 +145,15 @@ func newStyles(t theme) styles {
 		errorText:       lipgloss.NewStyle().Foreground(t.Danger),
 		muted:           lipgloss.NewStyle().Foreground(t.Muted),
 		accent:          lipgloss.NewStyle().Foreground(t.Accent),
+
+		wordmarkP:     lipgloss.NewStyle().Foreground(t.Accent).Bold(true),
+		wordmarkI:     lipgloss.NewStyle().Foreground(t.User).Bold(true),
+		wordmarkE:     lipgloss.NewStyle().Foreground(t.AccentSoft).Bold(true),
+		splashTitle:   lipgloss.NewStyle().Foreground(t.Accent).Bold(true),
+		splashMuted:   lipgloss.NewStyle().Foreground(t.Muted),
+		splashLabel:   lipgloss.NewStyle().Foreground(t.Faint),
+		splashValue:   lipgloss.NewStyle().Foreground(t.Base),
+		splashDismiss: lipgloss.NewStyle().Foreground(t.Faint).Italic(true),
 
 		editorBox: lipgloss.NewStyle().
 			Border(editorRuleBorder).

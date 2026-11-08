@@ -264,8 +264,11 @@ type Model struct {
 	fatal        string
 	disconnected bool
 	ready        bool
-	quitting     bool
-	ctrlCAt      time.Time
+	// splash shows the startup welcome panel until the first key press or
+	// until the transcript takes over.
+	splash   bool
+	quitting bool
+	ctrlCAt  time.Time
 
 	dialogs []*rpc.ExtensionUIRequestEvent
 
@@ -390,6 +393,7 @@ func New(client Client, opts Options) *Model {
 		paths:        paths,
 		statuses:     map[string]string{},
 		showThinking: true,
+		splash:       true,
 		mouseOn:      opts.Mouse,
 		copyFn:       opts.Copy,
 	}
@@ -1066,7 +1070,10 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.state.IsStreaming {
-		// Attach to a run that was already in flight when we started.
+		// Attach to a run that was already in flight when we started. The live
+		// output owns the transcript area, so the welcome panel must not hide
+		// it.
+		m.dismissSplash()
 		m.busy = true
 		m.activity.begin()
 		m.layout()
@@ -1252,6 +1259,10 @@ func (m *Model) bodyLines() []string {
 			lines = append(lines, "")
 		}
 		return lines
+	}
+
+	if m.splash {
+		return m.splashBody()
 	}
 
 	lines := strings.Split(m.transcript.View(), "\n")
