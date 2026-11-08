@@ -5,7 +5,9 @@ GO ?= go
 
 .PHONY: all build test lint vet fmt cover clean install
 
-all: build
+default: all
+
+all: build install
 
 build:
 	$(GO) build -trimpath -o bin/$(BINARY) $(CMD)
