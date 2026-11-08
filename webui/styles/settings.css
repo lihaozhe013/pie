@@ -1821,6 +1821,16 @@
   min-height: 28px;
 }
 
+/* A switch and the note that explains it, as one reading unit. */
+.settings-chat-option-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.settings-chat-option-group .settings-general-description {
+  margin: 0;
+}
+
 .settings-send-mode-options {
   display: flex;
   flex-shrink: 0;

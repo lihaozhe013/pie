@@ -15,6 +15,7 @@ export const zhCNLocale: LocalePlugin = {
     'settings.reset': '重置',
     'settings.resetTypography': '重置字体与字号',
     'settings.layout': '对话布局',
+    'settings.executionDisplay': '执行显示',
     'settings.preview': '实时预览',
     'settings.appearanceIntro': '修改立即生效，仅保存在当前浏览器中。',
     'settings.uiFontSize': '界面字号',
@@ -83,7 +84,6 @@ export const zhCNLocale: LocalePlugin = {
     'settings.thinkingDisplayDescription': '选择消息加载时模型思考块是否默认展开。',
     'settings.thinkingExpandedDefault': '默认展开思考块',
     'settings.chat': '对话',
-    'settings.runsPanel': '运行面板',
     'settings.compactRunCards': '紧凑显示运行中的卡片',
     'settings.compactRunCardsDescription':
       '运行中的卡片默认只显示摘要行，需要时再展开。已完成的运行仍会收起到历史记录。',

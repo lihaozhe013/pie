@@ -171,8 +171,8 @@ migration layer. Cleanup removes code, not user files.
    persisted history and model context. In the default display every tool call except a write, an
    edit, or a patch is filtered out of the transcript and collected by the Runs panel from the
    loaded messages plus live execution state; `hooks/useRetainedExecutionHistory.ts` keeps a
-   finished call in place while its stored result arrives. Settings › General can set the transcript
-   to conversation only (`hooks/useTranscriptMode.ts`, a browser preference):
+   finished call in place while its stored result arrives. Settings › Appearance can set the
+   transcript to conversation only (`hooks/useTranscriptMode.ts`, a browser preference):
    `lib/quiet-activity.ts` then filters out every call, and `lib/execution-history.ts` collects the
    kept cards too, carrying the diff a card would have shown (`diffFiles`) instead of the arguments
    that hold a whole file. `AppShell` treats the panel as part of the default docked page: it is

@@ -165,11 +165,11 @@ deliberately skips the remembered-session restore so a reload stays in the task 
 ## Settings and appearance
 
 Settings stays in a modal over the conversation. Desktop navigation uses a left-hand category list;
-phones use a category picker. General contains behavior and language, including how much of a run
-the transcript shows and whether active runs start folded; Appearance contains themes, fonts,
-sizes, conversation width and a live preview. The theme gallery is a native disclosure, collapsed
-initially to keep font controls near the top; a theme search result opens it automatically. Visited
-categories stay mounted so switching does not discard an editor's draft.
+phones use a category picker. General contains behavior and language; Appearance contains themes,
+fonts, sizes, conversation width, the display of execution details, and a live preview. The theme
+gallery is a native disclosure, collapsed initially to keep font controls near the top; a theme
+search result opens it automatically. Visited categories stay mounted so switching does not discard
+an editor's draft.
 
 Interface size (15px default), chat text size (16px) and monospace content size (12px) are
 independent. UI text retains its hierarchy relative to the interface baseline. Large UI sizes also
@@ -240,23 +240,23 @@ Current main-transcript behavior:
   expanded history is resizable from its top edge, which is a separator like the panel's: the
   history keeps the height the user drags to, between 120px and the room that leaves the active list
   its title and a card, the active list takes the rest, and the height is remembered in the browser.
-  Active cards follow the Runs panel compact preference: on by default, it keeps them folded to
-  their summary row, so concurrent work reads as a compact list; off opens an active card as it
-  appears. Completed cards remain in the active section for two seconds, showing their final
-  status, then move to history and default closed.
+  Active cards follow the Appearance › Execution display compact preference: on by default, it keeps
+  them folded to their summary row, so concurrent work reads as a compact list; off opens an active
+  card as it appears. Completed cards remain in the active section for two seconds, showing their
+  final status, then move to history and default closed.
   Multiple runs can remain active at once. Active and historical cards use blue for running, green
   for success, and red for errors, alongside status words and marks; cancelled runs remain neutral.
   Codemode's nested calls use their own status colors as compact subcards ahead of a script
   disclosure. Closing the panel does not discard anything.
 - Write/edit/patch cards default to expanded. A write that replaces a file shows the changed lines
   as a diff; its final content is not repeated. Diffs draw inline: the removed line above the line
-  that replaces it, one column a narrow card fits. `Show diffs side by side` in Settings › General
-  switches them to two columns; a phone stays inline whatever it says. The choice is a browser
-  preference, display only.
-- Settings › General › Runs panel keeps active run cards folded to their summary row, on by
-  default. The choice is a browser preference and applies immediately; completed runs still fold
-  into history.
-- Settings › General chooses where the transcript's write and edit cards live
+  that replaces it, one column a narrow card fits. `Show diffs side by side` in Settings ›
+  Appearance switches them to two columns; a phone stays inline whatever it says. The choice is a
+  browser preference, display only.
+- Settings › Appearance › Execution display keeps active run cards folded to their summary row,
+  on by default. The choice is a browser preference and applies immediately; completed runs still
+  fold into history.
+- Settings › Appearance chooses where the transcript's write and edit cards live
   (`Show write and edit cards in the conversation`, off by default). With it off the transcript
   carries the user's messages and the agent's replies and nothing else, so a reader who never
   inspects the agent's code sees only the conversation. The panel keeps the writes and edits

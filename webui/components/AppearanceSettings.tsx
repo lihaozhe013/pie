@@ -7,19 +7,25 @@ import {
   CHAT_CONTENT_WIDTH_MAX,
   useChatAppearance
 } from '@/hooks/useChatAppearance';
+import { setCompactRunCards, useCompactRunCards } from '@/hooks/useCompactRunCards';
+import { setDiffSideBySide, useDiffSideBySide } from '@/hooks/useDiffLayout';
 import { useFontPreferences } from '@/hooks/useFontPreferences';
 import { useI18n } from '@/hooks/useI18n';
 import { useTheme } from '@/hooks/useTheme';
+import { setTranscriptToolDisplay, useTranscriptToolDisplay } from '@/hooks/useTranscriptMode';
 import { THEME_OPTIONS } from '@/lib/theme.mts';
 import { AppearanceRange } from './AppearanceRange';
 import { FontSettings } from './FontSettings';
 import { MarkdownBody } from './MarkdownBody';
-import { ConfigButton } from './SettingsUi';
+import { ConfigButton, ConfigSwitch } from './SettingsUi';
 
 export function AppearanceSettings() {
   const { t } = useI18n();
   const { preference, setThemePreference } = useTheme();
   const { width, setWidth, fontSize, setFontSize } = useChatAppearance();
+  const toolDisplay = useTranscriptToolDisplay();
+  const diffSideBySide = useDiffSideBySide();
+  const compactRunCards = useCompactRunCards();
   const fonts = useFontPreferences();
   const selectedTheme = THEME_OPTIONS.find((option) => option.id === preference)!;
   return (
@@ -148,6 +154,70 @@ export function AppearanceSettings() {
           defaultValue={CHAT_CONTENT_WIDTH_DEFAULT}
           onChange={setWidth}
         />
+      </section>
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t('settings.executionDisplay')}</h3>
+        <div className="settings-chat-options">
+          <div className="settings-chat-option-group">
+            <div
+              id="settings-transcript-tool-cards"
+              className="settings-chat-option settings-chat-switch-option"
+            >
+              <span>{t('settings.transcriptToolCards')}</span>
+              <ConfigSwitch
+                checked={toolDisplay === 'cards'}
+                label={t('settings.transcriptToolCards')}
+                describedBy="settings-transcript-tool-cards-description"
+                onChange={(enabled) =>
+                  setTranscriptToolDisplay(enabled ? 'cards' : 'conversation')
+                }
+              />
+            </div>
+            <p
+              id="settings-transcript-tool-cards-description"
+              className="settings-general-description"
+            >
+              {t('settings.transcriptToolCardsDescription')}
+            </p>
+          </div>
+          <div className="settings-chat-option-group">
+            <div
+              id="settings-diff-layout"
+              className="settings-chat-option settings-chat-switch-option"
+            >
+              <span>{t('settings.diffSideBySide')}</span>
+              <ConfigSwitch
+                checked={diffSideBySide}
+                label={t('settings.diffSideBySide')}
+                describedBy="settings-diff-layout-description"
+                onChange={setDiffSideBySide}
+              />
+            </div>
+            <p id="settings-diff-layout-description" className="settings-general-description">
+              {t('settings.diffSideBySideDescription')}
+            </p>
+          </div>
+          <div className="settings-chat-option-group">
+            <div
+              id="settings-compact-run-cards"
+              className="settings-chat-option settings-chat-switch-option"
+            >
+              <span>{t('settings.compactRunCards')}</span>
+              <ConfigSwitch
+                checked={compactRunCards}
+                label={t('settings.compactRunCards')}
+                describedBy="settings-compact-run-cards-description"
+                onChange={setCompactRunCards}
+              />
+            </div>
+            <p
+              id="settings-compact-run-cards-description"
+              className="settings-general-description"
+            >
+              {t('settings.compactRunCardsDescription')}
+            </p>
+          </div>
+        </div>
       </section>
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t('settings.preview')}</h3>

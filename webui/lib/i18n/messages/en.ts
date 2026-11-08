@@ -15,6 +15,7 @@ export const enLocale: LocalePlugin = {
     'settings.reset': 'Reset',
     'settings.resetTypography': 'Reset fonts & sizes',
     'settings.layout': 'Conversation layout',
+    'settings.executionDisplay': 'Execution display',
     'settings.preview': 'Live preview',
     'settings.appearanceIntro': 'Changes apply immediately and are saved only in this browser.',
     'settings.uiFontSize': 'Interface font size',
@@ -86,7 +87,6 @@ export const enLocale: LocalePlugin = {
       'Choose whether model reasoning blocks are expanded when messages load.',
     'settings.thinkingExpandedDefault': 'Expand thinking blocks by default',
     'settings.chat': 'Chat',
-    'settings.runsPanel': 'Runs panel',
     'settings.compactRunCards': 'Compact active run cards',
     'settings.compactRunCardsDescription':
       'Active runs stay folded to their summary row until you open them. Completed runs still move to history collapsed.',

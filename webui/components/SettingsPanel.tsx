@@ -1,7 +1,4 @@
 import { setEnterSendMode, useEnterSendMode } from '@/hooks/useEnterSendMode';
-import { setCompactRunCards, useCompactRunCards } from '@/hooks/useCompactRunCards';
-import { setDiffSideBySide, useDiffSideBySide } from '@/hooks/useDiffLayout';
-import { setTranscriptToolDisplay, useTranscriptToolDisplay } from '@/hooks/useTranscriptMode';
 import { useI18n } from '@/hooks/useI18n';
 import { sendAgentCommand } from '@/lib/agent-client';
 import type { ToolEntry } from '@/lib/tool-presets';
@@ -137,9 +134,6 @@ function GeneralSettings({
 >) {
   const { locale, setLocale, supportedLocales, t } = useI18n();
   const enterSendMode = useEnterSendMode();
-  const toolDisplay = useTranscriptToolDisplay();
-  const diffSideBySide = useDiffSideBySide();
-  const compactRunCards = useCompactRunCards();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -284,18 +278,6 @@ function GeneralSettings({
         <h3 className="settings-general-heading">{t('settings.chat')}</h3>
         <div className="settings-chat-options">
           <div
-            id="settings-transcript-tool-cards"
-            className="settings-chat-option settings-chat-switch-option"
-          >
-            <span>{t('settings.transcriptToolCards')}</span>
-            <ConfigSwitch
-              checked={toolDisplay === 'cards'}
-              label={t('settings.transcriptToolCards')}
-              describedBy="settings-transcript-tool-cards-description"
-              onChange={(enabled) => setTranscriptToolDisplay(enabled ? 'cards' : 'conversation')}
-            />
-          </div>
-          <div
             id="settings-quote-selection"
             className="settings-chat-option settings-chat-switch-option"
           >
@@ -304,18 +286,6 @@ function GeneralSettings({
               checked={quoteSelectionEnabled}
               label={t('settings.quoteSelection')}
               onChange={onQuoteSelectionChange}
-            />
-          </div>
-          <div
-            id="settings-diff-layout"
-            className="settings-chat-option settings-chat-switch-option"
-          >
-            <span>{t('settings.diffSideBySide')}</span>
-            <ConfigSwitch
-              checked={diffSideBySide}
-              label={t('settings.diffSideBySide')}
-              describedBy="settings-diff-layout-description"
-              onChange={setDiffSideBySide}
             />
           </div>
           <div
@@ -368,12 +338,6 @@ function GeneralSettings({
             />
           </div>
         </div>
-        <p id="settings-transcript-tool-cards-description" className="settings-general-description">
-          {t('settings.transcriptToolCardsDescription')}
-        </p>
-        <p id="settings-diff-layout-description" className="settings-general-description">
-          {t('settings.diffSideBySideDescription')}
-        </p>
         <p id="settings-cache-miss-notices-description" className="settings-general-description">
           {t('settings.cacheMissNoticesDescription')}
         </p>
@@ -382,27 +346,6 @@ function GeneralSettings({
             {cacheMissNoticesError}
           </p>
         )}
-      </section>
-
-      <section className="settings-general-section">
-        <h3 className="settings-general-heading">{t('settings.runsPanel')}</h3>
-        <div className="settings-chat-options">
-          <div
-            id="settings-compact-run-cards"
-            className="settings-chat-option settings-chat-switch-option"
-          >
-            <span>{t('settings.compactRunCards')}</span>
-            <ConfigSwitch
-              checked={compactRunCards}
-              label={t('settings.compactRunCards')}
-              describedBy="settings-compact-run-cards-description"
-              onChange={setCompactRunCards}
-            />
-          </div>
-        </div>
-        <p id="settings-compact-run-cards-description" className="settings-general-description">
-          {t('settings.compactRunCardsDescription')}
-        </p>
       </section>
 
       {shellSettings?.isWindows && (
@@ -606,7 +549,8 @@ export function SettingsPanel({
       focusTarget.focus({ preventScroll: true });
       highlighted =
         target.closest<HTMLElement>(
-          '.appearance-range, .appearance-font-group, .settings-general-section, .settings-chat-option'
+          '.appearance-range, .appearance-font-group, .settings-general-section, ' +
+            '.settings-chat-option-group, .settings-chat-option'
         ) ?? target;
       highlighted.classList.add('settings-search-highlight');
       highlightTimeout = window.setTimeout(

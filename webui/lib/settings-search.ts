@@ -82,13 +82,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     keywords: 'chat width layout 聊天 宽度 寬度 布局'
   },
   {
-    section: 'general',
-    label: 'settings.quoteSelection',
-    target: 'settings-quote-selection',
-    keywords: 'quote selection 引用 选中 選取'
-  },
-  {
-    section: 'general',
+    section: 'appearance',
     label: 'settings.transcriptToolCards',
     description: 'settings.transcriptToolCardsDescription',
     target: 'settings-transcript-tool-cards',
@@ -96,7 +90,15 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       'tool card transcript conversation runs diff write edit patch 工具卡片 写入 编辑 編輯 补丁 補丁 对话记录 對話紀錄 执行历史 執行歷史 模式'
   },
   {
-    section: 'general',
+    section: 'appearance',
+    label: 'settings.diffSideBySide',
+    description: 'settings.diffSideBySideDescription',
+    target: 'settings-diff-layout',
+    keywords:
+      'diff side by side split inline stacked columns write edit patch 并排 並排 内联 內聯 单栏 單欄 两栏 兩欄 分栏 分欄 拆分'
+  },
+  {
+    section: 'appearance',
     label: 'settings.compactRunCards',
     description: 'settings.compactRunCardsDescription',
     target: 'settings-compact-run-cards',
@@ -105,11 +107,9 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   },
   {
     section: 'general',
-    label: 'settings.diffSideBySide',
-    description: 'settings.diffSideBySideDescription',
-    target: 'settings-diff-layout',
-    keywords:
-      'diff side by side split inline stacked columns write edit patch 并排 並排 内联 內聯 单栏 單欄 两栏 兩欄 分栏 分欄 拆分'
+    label: 'settings.quoteSelection',
+    target: 'settings-quote-selection',
+    keywords: 'quote selection 引用 选中 選取'
   },
   {
     section: 'general',

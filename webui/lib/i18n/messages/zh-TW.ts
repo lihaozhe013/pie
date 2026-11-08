@@ -15,6 +15,7 @@ export const zhTWLocale: LocalePlugin = {
     'settings.reset': '重設',
     'settings.resetTypography': '重設字體與字級',
     'settings.layout': '對話版面',
+    'settings.executionDisplay': '執行顯示',
     'settings.preview': '即時預覽',
     'settings.appearanceIntro': '修改立即生效，僅儲存在目前的瀏覽器中。',
     'settings.uiFontSize': '介面字級',
@@ -84,7 +85,6 @@ export const zhTWLocale: LocalePlugin = {
     'settings.thinkingDisplayDescription': '選擇訊息載入時模型思考區塊是否預設展開。',
     'settings.thinkingExpandedDefault': '預設展開思考區塊',
     'settings.chat': '對話',
-    'settings.runsPanel': '執行面板',
     'settings.compactRunCards': '精簡顯示執行中的卡片',
     'settings.compactRunCardsDescription':
       '執行中的卡片預設只顯示摘要列，需要時再展開。已完成的執行仍會收合到歷史紀錄。',
