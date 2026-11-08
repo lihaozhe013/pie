@@ -18,7 +18,6 @@ type overlayKind int
 const (
 	overlayPicker overlayKind = iota
 	overlaySelect
-	overlayAsk
 	overlayConfirm
 	overlayInput
 	overlayEditor
@@ -223,7 +222,7 @@ func (o *overlay) dropItem(value string) bool {
 // Update forwards typing to the overlay's input widget.
 func (o *overlay) Update(msg tea.Msg) tea.Cmd {
 	switch o.kind {
-	case overlayPicker, overlayInput, overlayAsk:
+	case overlayPicker, overlayInput:
 		var cmd tea.Cmd
 		o.filter, cmd = o.filter.Update(msg)
 		if o.kind == overlayPicker {
@@ -254,7 +253,7 @@ func (o *overlay) Resize(width, height int) {
 	}
 	o.width = boxWidth
 	o.height = height
-	if o.kind == overlayPicker || o.kind == overlayInput || o.kind == overlayAsk {
+	if o.kind == overlayPicker || o.kind == overlayInput {
 		o.filter.Width = boxWidth - 8
 	}
 	if o.kind == overlayEditor {
@@ -276,8 +275,6 @@ func (o *overlay) View(st styles) string {
 	switch o.kind {
 	case overlayPicker, overlaySelect:
 		o.renderPicker(&body, st)
-	case overlayAsk:
-		o.renderAsk(&body, st)
 	case overlayConfirm:
 		if o.message != "" {
 			body.WriteString(o.message)

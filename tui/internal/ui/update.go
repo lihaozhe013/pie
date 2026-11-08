@@ -548,6 +548,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if m.overlay != nil {
 		return m.handleOverlayKey(msg)
 	}
+	if m.ask != nil {
+		return m.handleAskKey(msg)
+	}
 
 	key := msg.String()
 
@@ -1831,17 +1834,24 @@ func (m *Model) handleExtensionUI(request *rpc.ExtensionUIRequestEvent) (tea.Mod
 	case "setTitle":
 		return m, tea.SetWindowTitle(request.Title)
 	case "set_editor_text":
+		if m.ask != nil {
+			// The composer is answering a question, so a prefill lands in the
+			// stashed draft and waits for the prompt to come back.
+			m.ask.draft = request.Text
+			break
+		}
 		m.composer.SetText(request.Text)
 		m.completion.Refresh(m.composer.Value())
 		m.layout()
 	case "select", "confirm", "input", "editor":
-		if m.overlay == nil {
+		if m.overlay == nil && m.ask == nil {
 			m.openExtensionOverlay(request)
 			return m, m.waitEvent()
 		}
 		// A sign-in prompt has to be visible or the flow cannot proceed, so it
 		// takes over the settings panel and returns there when answered.
-		if m.authFlow != "" && m.overlay.kind == overlaySettings {
+		if m.authFlow != "" && m.overlay != nil && m.overlay.kind == overlaySettings &&
+			!isAskUserSelect(request) {
 			previous := m.overlay
 			m.openExtensionOverlay(request)
 			if m.overlay != nil && m.overlay.requestID != "" {
@@ -1859,10 +1869,12 @@ func (m *Model) openExtensionOverlay(request *rpc.ExtensionUIRequestEvent) {
 	switch request.Method {
 	case "select":
 		if isAskUserSelect(request) {
-			overlay = newAskOverlay(request)
-		} else {
-			overlay = newSelectOverlay(request)
+			// ask_user is not a dialog: it stays inline above the composer so the
+			// conversation the question refers to keeps its space.
+			m.openAsk(request)
+			return
 		}
+		overlay = newSelectOverlay(request)
 	case "confirm":
 		overlay = newConfirmOverlay(request)
 	case "input":
@@ -1902,17 +1914,32 @@ func (m *Model) closeOverlay() {
 	m.overlay = nil
 	m.layout()
 	// A sign-in step that arrived behind a dialog is shown now.
-	if m.pendingAuthStep != nil {
-		step := m.pendingAuthStep
-		m.pendingAuthStep = nil
-		m.openOverlay(step)
+	if m.showPendingAuthStep() {
 		return
 	}
-	if len(m.dialogs) > 0 {
-		next := m.dialogs[0]
-		m.dialogs = m.dialogs[1:]
-		m.openExtensionOverlay(next)
+	m.openQueuedDialog()
+}
+
+// showPendingAuthStep opens a sign-in step that arrived behind a dialog.
+func (m *Model) showPendingAuthStep() bool {
+	if m.pendingAuthStep == nil {
+		return false
 	}
+	step := m.pendingAuthStep
+	m.pendingAuthStep = nil
+	m.openOverlay(step)
+	return true
+}
+
+// openQueuedDialog shows the extension UI request waiting behind the current
+// dialog or question, if any.
+func (m *Model) openQueuedDialog() {
+	if len(m.dialogs) == 0 {
+		return
+	}
+	next := m.dialogs[0]
+	m.dialogs = m.dialogs[1:]
+	m.openExtensionOverlay(next)
 }
 
 // handleOverlayKey routes keys while a modal is open.
@@ -1966,12 +1993,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case "up", "ctrl+p", "shift+tab":
-		if o.kind == overlayPicker || o.kind == overlaySelect || o.kind == overlayAsk {
+		if o.kind == overlayPicker || o.kind == overlaySelect {
 			o.move(-1)
 			return m, nil
 		}
 	case "down", "ctrl+n", "tab":
-		if o.kind == overlayPicker || o.kind == overlaySelect || o.kind == overlayAsk {
+		if o.kind == overlayPicker || o.kind == overlaySelect {
 			o.move(1)
 			return m, nil
 		}
@@ -1980,8 +2007,6 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch o.kind {
 		case overlayPicker, overlaySelect:
 			return m, m.selectOverlayItem()
-		case overlayAsk:
-			return m, m.answerAsk()
 		case overlayConfirm:
 			return m, m.answerConfirm(true)
 		case overlayInput:

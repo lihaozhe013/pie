@@ -105,8 +105,9 @@ storage; the resume-picker section below explains when it runs.
   custom editor owns wrapping, the caret cell, the sticky column for vertical
   movement, mouse selection over rune indices, and the scroll offset, so the
   box height and the visible rows always agree.
-- `overlay.go` — pickers and extension dialogs; `ask_user.go` adds the
-  question panel with its options and free-form answer field.
+- `overlay.go` — pickers and extension dialogs; `ask_user.go` renders the
+  question inline above the composer instead of as a dialog, so the
+  conversation stays visible and the prompt itself is the free-form answer.
 - `diff.go` — tool argument/result extraction and a dependency-free line diff.
 - `syntax.go` — chroma-based syntax colours for tool content: a shell
   command, or the file a coding tool reads, writes, or edits. A call whose
@@ -218,10 +219,14 @@ rather than silently diverging.
 
 The bridge also registers the `ask_user` tool. It reuses the extension dialog
 channel: a question is a `select` whose last option is the
-`Write my own answer…` sentinel, so the TUI renders one panel with the
-question, its options, and an answer field. An option and a typed answer both
-travel back as the same response; dismissing the panel returns the same
-"dismissed" tool result as the web client. An open question sends only the
+`Write my own answer…` sentinel. The client strips the sentinel and renders the
+question and its options between the transcript and the composer, never as a
+full-screen dialog: the conversation the question refers to has to stay
+readable. The composer keeps its normal editing behavior and becomes the
+"write my own answer" field; an option and a typed answer both travel back as
+the same response, and dismissing the question returns the same "dismissed"
+tool result as the web client. A prompt draft present when the question arrives
+is stashed and restored when it closes. An open question sends only the
 sentinel, and other hosts keep the normal select -> input fallback. No new RPC
 command or session entry is involved.
 

@@ -226,6 +226,9 @@ type Model struct {
 	composer   *composer
 	completion *completion
 	overlay    *overlay
+	// ask is the inline ask_user question. It is not an overlay: the transcript
+	// stays visible above it and the composer below it answers.
+	ask *askPanel
 
 	width  int
 	height int
@@ -1153,12 +1156,21 @@ func (m *Model) layout() {
 	m.composer.SetWidth(width - 4)
 
 	// On a very short terminal, shrink the editor instead of letting the frame
-	// clip its bottom border.
-	m.composer.SetMaxRows(m.height - 5 - m.activityRows())
+	// clip its bottom border. While a question waits, the answer field gives up
+	// rows first so the options stay on screen.
+	composerRows := m.height - 5 - m.activityRows()
+	if m.ask != nil {
+		composerRows = minInt(composerRows, 3)
+	}
+	m.composer.SetMaxRows(composerRows)
 
 	editor := m.composer.Height() + 3
+	if m.ask != nil {
+		m.resizeAsk()
+		editor += len(m.ask.lines)
+	}
 	completion := 0
-	if m.completion.visible && m.overlay == nil {
+	if m.completion.visible && m.overlay == nil && m.ask == nil {
 		completion = minInt(len(m.completion.filtered), 6) + 2
 	}
 	body := m.height - 1 - m.activityRows() - editor - completion
@@ -1208,8 +1220,11 @@ func (m *Model) View() string {
 	if len(lines) < m.height {
 		lines = append(lines, m.renderStatus())
 	}
-	if m.completion.visible && m.overlay == nil && len(lines) < m.height {
+	if m.completion.visible && m.overlay == nil && m.ask == nil && len(lines) < m.height {
 		lines = append(lines, strings.Split(m.renderCompletion(), "\n")...)
+	}
+	if m.ask != nil && len(lines) < m.height {
+		lines = append(lines, m.ask.lines...)
 	}
 	if len(lines) < m.height {
 		lines = append(lines, strings.Split(m.renderEditor(), "\n")...)
@@ -1402,6 +1417,16 @@ func (m *Model) renderEditor() string {
 	}
 	if m.currentMode == "plan" && !m.disconnected && !m.busy {
 		hint = "plan mode · writes blocked · " + hint
+	}
+	if m.ask != nil {
+		switch {
+		case len(m.ask.options) == 0:
+			hint = "type an answer · enter send · esc dismiss"
+		case m.composer.Empty():
+			hint = "↑/↓ choose · enter send · esc dismiss"
+		default:
+			hint = "enter send · esc dismiss"
+		}
 	}
 
 	style := m.styles.editorBox.Copy().Width(maxInt(20, m.frameWidth()))

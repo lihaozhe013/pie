@@ -136,8 +136,9 @@ subagents, no second agent loop, no parallel protocol.
 - A bundled bridge extension (loaded with `-e`) that adds hot tool switching,
   Plan mode, the `ask_user` question tool, and reload over RPC, using the same
   `pie:*` session entries as the web UI
-- An `ask_user` panel with the question, up to six options, and a free-form
-  answer field; choosing an option and typing an answer both reply in one step
+- An inline `ask_user` panel: the question and up to six options sit above the
+  prompt with the conversation still on screen, and the prompt itself answers
+  with free-form text; choosing and typing both reply in one step
 - Extension UI support: confirm/select/input/editor dialogs, notifications,
   status entries, window titles, and editor prefills
 - Survives upgrades: unknown protocol records are ignored rather than fatal

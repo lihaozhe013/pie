@@ -371,8 +371,11 @@ func clampInt(value, low, high int) int {
 // frame composition in View and layout.
 func (m *Model) composerTop() int {
 	top := m.body + 1 + m.activityRows()
-	if m.completion.visible && m.overlay == nil {
+	if m.completion.visible && m.overlay == nil && m.ask == nil {
 		top += minInt(len(m.completion.filtered), 6) + 2
+	}
+	if m.ask != nil {
+		top += len(m.ask.lines)
 	}
 	return top
 }

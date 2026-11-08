@@ -54,12 +54,13 @@ type composer struct {
 	value  []rune
 	cursor int // rune index of the caret, 0..len(value)
 
-	width   int // content columns inside the editor box, scrollbar included
-	maxRows int // configured upper bound, lowered on very short terminals
-	visible int // rows currently reserved by the box
-	rows    []composerRow
-	scroll  int // index of the first visible row
-	goalCol int // sticky column for vertical movement, -1 when unset
+	width       int // content columns inside the editor box, scrollbar included
+	maxRows     int // configured upper bound, lowered on very short terminals
+	visible     int // rows currently reserved by the box
+	rows        []composerRow
+	scroll      int // index of the first visible row
+	goalCol     int // sticky column for vertical movement, -1 when unset
+	placeholder string
 
 	sel composerSelection
 
@@ -70,12 +71,13 @@ type composer struct {
 
 func newComposer(st styles) *composer {
 	c := &composer{
-		styles:  st,
-		width:   80,
-		maxRows: composerMaxRows,
-		visible: 1,
-		goalCol: -1,
-		histAt:  -1,
+		styles:      st,
+		width:       80,
+		maxRows:     composerMaxRows,
+		visible:     1,
+		goalCol:     -1,
+		histAt:      -1,
+		placeholder: composerPlaceholder,
 	}
 	c.rewrap()
 	return c
@@ -112,6 +114,12 @@ func (c *composer) SetMaxRows(rows int) {
 // SetStyles swaps the palette used by the editor.
 func (c *composer) SetStyles(st styles) {
 	c.styles = st
+}
+
+// SetPlaceholder swaps the hint shown on an empty prompt. The ask_user panel
+// borrows it so the field reads as the free-form answer choice.
+func (c *composer) SetPlaceholder(text string) {
+	c.placeholder = text
 }
 
 func (c *composer) Value() string { return string(c.value) }
@@ -556,7 +564,7 @@ func (c *composer) renderRow(index int, cursorHere bool, width int) string {
 
 // placeholderLine shows the hint with the caret parked in front of it.
 func (c *composer) placeholderLine(width int) string {
-	text := truncateLine(composerPlaceholder, maxInt(0, width-2))
+	text := truncateLine(c.placeholder, maxInt(0, width-2))
 	return c.styles.editorCursor.Render(" ") + " " + c.styles.editorPlaceholder.Render(text)
 }
 
