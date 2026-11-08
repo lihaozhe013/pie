@@ -651,9 +651,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.prefs != nil && m.prefs.ToolPreset() != msg.selection {
 			_ = m.prefs.SetToolPreset(msg.selection)
 		}
-		if !msg.quiet {
-			m.setToast("preset: " + msg.selection)
-		}
 		return m, tea.Batch(m.loadEntries(), m.loadToolSnapshot())
 
 	case reloadMsg:
@@ -1043,9 +1040,8 @@ func (m *Model) commandItems() []completionItem {
 
 // layout recomputes pane sizes from the terminal size and editor height.
 //
-// The frame is exactly height lines: 1 header + body + 1 status + an optional
-// activity row + editor box + hint. Any mismatch would scroll the alternate
-// screen and hide the header.
+// The frame is exactly height lines: body + 1 status + an optional activity
+// row + editor box + hint.
 func (m *Model) layout() {
 	if m.width == 0 || m.height == 0 {
 		return
@@ -1057,14 +1053,14 @@ func (m *Model) layout() {
 
 	// On a very short terminal, shrink the editor instead of letting the frame
 	// clip its bottom border.
-	m.composer.SetMaxRows(m.height - 6 - m.activityRows())
+	m.composer.SetMaxRows(m.height - 5 - m.activityRows())
 
 	editor := m.composer.Height() + 3
 	completion := 0
 	if m.completion.visible && m.overlay == nil {
 		completion = minInt(len(m.completion.filtered), 6) + 2
 	}
-	body := m.height - 2 - m.activityRows() - editor - completion
+	body := m.height - 1 - m.activityRows() - editor - completion
 	if body < 1 {
 		body = 1
 	}
@@ -1103,7 +1099,6 @@ func (m *Model) View() string {
 	}
 
 	lines := make([]string, 0, m.height)
-	lines = append(lines, m.renderHeader())
 	lines = append(lines, m.bodyLines()...)
 
 	if len(lines) < m.height {
@@ -1175,30 +1170,21 @@ func (m *Model) bodyLines() []string {
 	return lines
 }
 
-func (m *Model) renderHeader() string {
-	title := m.styles.header.Render("pie")
-	segments := []string{title}
-
-	// The working directory identifies the session group, so show it up front.
-	if cwd := displayPath(m.opts.CWD); cwd != "" {
-		segments = append(segments, m.styles.accent.Render(cwd))
-	}
-
-	if m.state.SessionName != "" {
-		segments = append(segments, m.styles.muted.Render(m.state.SessionName))
-	}
-	if m.currentMode == "plan" {
-		segments = append(segments, m.styles.accent.Render("plan"))
-	}
-	if goal := m.goalStatusSegment(); goal != "" {
-		segments = append(segments, m.styles.muted.Render(goal))
-	}
-
-	return truncateLine(strings.Join(segments, m.styles.muted.Render(" · ")), m.frameWidth())
-}
-
 func (m *Model) renderStatus() string {
 	var left []string
+
+	if cwd := displayPath(m.opts.CWD); cwd != "" {
+		left = append(left, m.styles.accent.Render(cwd))
+	}
+	if m.state.SessionName != "" {
+		left = append(left, m.styles.muted.Render(m.state.SessionName))
+	}
+	if m.currentMode == "plan" {
+		left = append(left, m.styles.accent.Render("plan"))
+	}
+	if goal := m.goalStatusSegment(); goal != "" {
+		left = append(left, m.styles.muted.Render(goal))
+	}
 
 	if m.fatal != "" {
 		left = append(left, m.styles.errorText.Render(m.fatal))
@@ -1216,6 +1202,9 @@ func (m *Model) renderStatus() string {
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
+		if strings.HasPrefix(key, "preset") || strings.HasPrefix(m.statuses[key], "preset:") {
+			continue
+		}
 		left = append(left, m.styles.muted.Render(m.statuses[key]))
 	}
 	for _, line := range m.widget {
@@ -1223,7 +1212,9 @@ func (m *Model) renderStatus() string {
 	}
 
 	if m.toast != "" && time.Now().Before(m.toastUntil) {
-		left = append(left, m.styles.notice.Render(m.toast))
+		if !strings.HasPrefix(m.toast, "preset:") {
+			left = append(left, m.styles.notice.Render(m.toast))
+		}
 	}
 
 	var right string

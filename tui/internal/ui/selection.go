@@ -370,7 +370,7 @@ func clampInt(value, low, high int) int {
 // composerTop is the terminal row of the composer's top rule. It mirrors the
 // frame composition in View and layout.
 func (m *Model) composerTop() int {
-	top := 1 + m.body + 1 + m.activityRows()
+	top := m.body + 1 + m.activityRows()
 	if m.completion.visible && m.overlay == nil {
 		top += minInt(len(m.completion.filtered), 6) + 2
 	}
@@ -478,7 +478,7 @@ func (m *Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	// The frame is inset by a blank gutter on each side, so terminal columns
 	// are shifted by the indent before they reach the transcript.
 	localX := msg.X - m.frameIndent()
-	localY := msg.Y - 1 // the header occupies the first row
+	localY := msg.Y
 	switch msg.Action {
 	case tea.MouseActionPress:
 		if msg.Button != tea.MouseButtonLeft {
