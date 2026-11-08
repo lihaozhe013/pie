@@ -378,10 +378,11 @@ func (m *Model) composerTop() int {
 }
 
 // composerColumn maps a terminal column to a text column inside the editor.
-// The editor pads one column on each side; clicks in the padding and on the
-// scrollbar clamp to the nearest text cell.
+// The editor pads one column on each side and pins a two-column "> " marker
+// before the text; clicks in the padding, marker, and scrollbar clamp to the
+// nearest text cell.
 func (m *Model) composerColumn(x int) int {
-	col := x - m.frameIndent() - 1
+	col := x - m.frameIndent() - 3
 	return clampInt(col, 0, m.composer.textWidth())
 }
 

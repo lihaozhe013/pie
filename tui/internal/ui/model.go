@@ -1127,9 +1127,9 @@ func (m *Model) layout() {
 		return
 	}
 	width := m.frameWidth()
-	// The composer only carries a top and bottom rule now, so its content can
-	// use the columns the side borders used to occupy.
-	m.composer.SetWidth(width - 2)
+	// The composer carries a top and bottom rule plus the pinned prompt marker,
+	// so its editable content gives up two columns for "> ".
+	m.composer.SetWidth(width - 4)
 
 	// On a very short terminal, shrink the editor instead of letting the frame
 	// clip its bottom border.
@@ -1364,23 +1364,32 @@ func (m *Model) editorMeta() string {
 }
 
 func (m *Model) renderEditor() string {
-	hint := "enter to send · ctrl+j newline · ctrl+p palette · /help"
-	if !m.enterToSend {
-		hint = "enter newline · alt+enter send · ctrl+p palette · /help"
-	}
+	hint := "ctrl+p palette"
 	if m.busy {
-		hint = "enter to queue follow-up · ctrl+s to steer · esc to interrupt"
+		followUp := "enter follow-up"
+		if !m.enterToSend {
+			followUp = "alt+enter follow-up"
+		}
+		hint = "ctrl+s steer · " + followUp
 	}
 	if m.disconnected {
 		hint = "pi exited · ctrl+c to quit"
 	}
-	if m.currentMode == "plan" && !m.disconnected {
+	if m.currentMode == "plan" && !m.disconnected && !m.busy {
 		hint = "plan mode · writes blocked · " + hint
 	}
 
 	style := m.styles.editorBox.Copy().Width(maxInt(20, m.frameWidth()))
-	content := m.composer.View()
-	box := style.Render(content)
+	lines := strings.Split(m.composer.View(), "\n")
+	marker := m.styles.userPrefix.Render(">")
+	for i := range lines {
+		if i == 0 {
+			lines[i] = marker + " " + lines[i]
+		} else {
+			lines[i] = "  " + lines[i]
+		}
+	}
+	box := style.Render(strings.Join(lines, "\n"))
 
 	width := m.frameWidth()
 	right := m.editorMeta()

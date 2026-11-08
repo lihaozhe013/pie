@@ -14,7 +14,7 @@ import (
 // a paragraph, not so much that the transcript disappears.
 const composerMaxRows = 8
 
-const composerPlaceholder = "Ask pi anything…  (ctrl+p for commands · /help)"
+const composerPlaceholder = "Ask pi anything…"
 
 // composerRow is one visual row of the buffer after soft wrapping. Rows are
 // contiguous slices of the buffer: end is the index of the wrapping point, a
