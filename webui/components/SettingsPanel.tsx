@@ -1,4 +1,5 @@
 import { setEnterSendMode, useEnterSendMode } from '@/hooks/useEnterSendMode';
+import { setCompactRunCards, useCompactRunCards } from '@/hooks/useCompactRunCards';
 import { setDiffSideBySide, useDiffSideBySide } from '@/hooks/useDiffLayout';
 import { setTranscriptToolDisplay, useTranscriptToolDisplay } from '@/hooks/useTranscriptMode';
 import { useI18n } from '@/hooks/useI18n';
@@ -138,6 +139,7 @@ function GeneralSettings({
   const enterSendMode = useEnterSendMode();
   const toolDisplay = useTranscriptToolDisplay();
   const diffSideBySide = useDiffSideBySide();
+  const compactRunCards = useCompactRunCards();
   const [shellSettings, setShellSettings] = useState<ToolSettingsResponse | null>(null);
   const [shellSaving, setShellSaving] = useState(false);
   const [shellError, setShellError] = useState<string | null>(null);
@@ -380,6 +382,27 @@ function GeneralSettings({
             {cacheMissNoticesError}
           </p>
         )}
+      </section>
+
+      <section className="settings-general-section">
+        <h3 className="settings-general-heading">{t('settings.runsPanel')}</h3>
+        <div className="settings-chat-options">
+          <div
+            id="settings-compact-run-cards"
+            className="settings-chat-option settings-chat-switch-option"
+          >
+            <span>{t('settings.compactRunCards')}</span>
+            <ConfigSwitch
+              checked={compactRunCards}
+              label={t('settings.compactRunCards')}
+              describedBy="settings-compact-run-cards-description"
+              onChange={setCompactRunCards}
+            />
+          </div>
+        </div>
+        <p id="settings-compact-run-cards-description" className="settings-general-description">
+          {t('settings.compactRunCardsDescription')}
+        </p>
       </section>
 
       {shellSettings?.isWindows && (

@@ -86,6 +86,10 @@ export const enLocale: LocalePlugin = {
       'Choose whether model reasoning blocks are expanded when messages load.',
     'settings.thinkingExpandedDefault': 'Expand thinking blocks by default',
     'settings.chat': 'Chat',
+    'settings.runsPanel': 'Runs panel',
+    'settings.compactRunCards': 'Compact active run cards',
+    'settings.compactRunCardsDescription':
+      'Active runs stay folded to their summary row until you open them. Completed runs still move to history collapsed.',
     'settings.enterSendMode': 'Send key',
     'settings.enterSendModeEnter': 'Enter',
     'settings.enterSendModeCtrlEnter': 'Ctrl/Cmd+Enter',

@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useBodyContent, useExitingItems } from '@/hooks/useToolCardMotion';
+import { useCompactRunCards } from '@/hooks/useCompactRunCards';
 import { useI18n } from '@/hooks/useI18n';
 import { useResizablePanel } from '@/hooks/useResizablePanel';
 import {
@@ -133,8 +134,12 @@ function RunEntry({
   fading?: boolean;
 }) {
   const { t } = useI18n();
-  // The section owns the default: live runs open, historical runs fold.
-  const [expanded, setExpanded] = useState(() => entry.active ?? entry.status === 'running');
+  const compactRunCards = useCompactRunCards();
+  // The section owns the default: live runs open unless the compact preference
+  // folds them, historical runs fold. An explicit toggle remains the user's.
+  const [expansionOverride, setExpansionOverride] = useState<boolean | null>(null);
+  const expanded =
+    expansionOverride ?? (!compactRunCards && (entry.active ?? entry.status === 'running'));
   const [animateIn] = useState(entering);
   const showBody = useBodyContent(expanded);
   const slotRef = useRef<HTMLLIElement>(null);
@@ -171,7 +176,7 @@ function RunEntry({
           type="button"
           className="run-history-entry-header"
           aria-expanded={expanded}
-          onClick={() => setExpanded((value) => !value)}
+          onClick={() => setExpansionOverride((value) => !(value ?? expanded))}
         >
           <span className="run-history-mark" data-status={entry.status} aria-hidden="true">
             {STATUS_MARK[entry.status]}

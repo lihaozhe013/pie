@@ -97,6 +97,14 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   },
   {
     section: 'general',
+    label: 'settings.compactRunCards',
+    description: 'settings.compactRunCardsDescription',
+    target: 'settings-compact-run-cards',
+    keywords:
+      'runs panel active run card compact collapse fold summary concurrency 运行 執行 面板 卡片 紧凑 精簡 收起 折叠 收合 并发 並行'
+  },
+  {
+    section: 'general',
     label: 'settings.diffSideBySide',
     description: 'settings.diffSideBySideDescription',
     target: 'settings-diff-layout',
