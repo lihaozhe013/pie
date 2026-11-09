@@ -762,18 +762,22 @@ func (m *Model) applyThinkingVisibility() {
 
 // syncBlockExpansion re-evaluates a tool or diff block's default collapsed
 // state after its body changes. Short bodies stay visible like a terminal
-// session; long ones fold to their one-line summary. Running tools keep
-// streaming their output and fold once they finish.
+// session; long ones fold to their summary and preview rows. A running tool
+// keeps its bounded live tail in the collapsed default instead of streaming
+// its whole log, and folds or expands with everything else once it finishes.
 func (m *Model) syncBlockExpansion(b *block) {
 	if b.kind != blockTool && b.kind != blockDiff {
 		return
 	}
-	streaming := b.streaming && b.kind == blockTool
+	if b.streaming && b.kind == blockTool {
+		b.collapsed = !m.expanded
+		return
+	}
 	rows := bodyLines(b.body)
 	if b.kind == blockDiff {
 		rows += len(b.diff)
 	}
-	b.collapsed = !m.expanded && !streaming && autoCollapsed(b.kind, rows)
+	b.collapsed = !m.expanded && autoCollapsed(b.kind, rows)
 }
 
 func (m *Model) applyExpansion() {

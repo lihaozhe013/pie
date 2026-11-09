@@ -18,9 +18,9 @@ TUI never drops JSON keys it does not understand.
 | Agent directory | read-only | `PI_CODING_AGENT_DIR` or `~/.pi/agent`. |
 | Settings file | read-only | The agent `settings.json` in use. |
 | Bridge extension | read-only | `ready` when pi advertises `pie-tools`. |
-| Thinking blocks | `pie-settings.json` | TUI-only visibility default. |
+| Thinking blocks | `pie-settings.json` | TUI-only visibility default. Hidden thinking still streams a live tail. |
 | Goal controls | `pie-settings.json` | Enabling requires the `pi-better-goal` package. |
-| Expand tool output | `pie-settings.json` | Same as `ctrl+o`. |
+| Expand tool output | `pie-settings.json` | Same as `ctrl+o`. Collapsed tools keep a live tail while running and a summary plus trailing rows when folded. |
 | Reload pi | session prompt `/pie-reload` | Rereads settings and instructions; needs the bridge. |
 
 ## Instructions

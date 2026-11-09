@@ -388,9 +388,11 @@ func (t *transcript) renderAssistant(b *block, width int) string {
 }
 
 func (t *transcript) renderThinking(b *block, width int) string {
-	// Hidden thinking renders nothing, header included: a lone "thinking"
-	// label would only add a useless row to the scrollback.
-	if b.collapsed {
+	// Hidden finished thinking renders nothing, header included: a lone
+	// "thinking" label would only add a useless row to the scrollback.
+	// Streaming thinking still shows its live tail, so the reader can follow
+	// the model's progress even with finished thinking hidden.
+	if b.collapsed && !b.streaming {
 		return ""
 	}
 	head := t.styles.thinkingHead.Render("○ thinking")
@@ -398,10 +400,16 @@ func (t *transcript) renderThinking(b *block, width int) string {
 	if dots != "" {
 		head = t.styles.thinkingHead.Render("○ thinking · " + dots)
 	}
-	if strings.TrimSpace(b.text) == "" {
+	text := strings.TrimRight(b.text, "\n")
+	if strings.TrimSpace(text) == "" {
 		return head
 	}
-	body := t.styles.thinkingBody.Width(width - 2).Render(strings.TrimRight(b.text, "\n"))
+	lines := strings.Split(text, "\n")
+	if b.streaming && len(lines) > thinkingTailLines {
+		lines = lines[len(lines)-thinkingTailLines:]
+		lines = append([]string{"…"}, lines...)
+	}
+	body := t.styles.thinkingBody.Width(width - 2).Render(strings.Join(lines, "\n"))
 	return head + "\n" + indentLines(body, "  ")
 }
 
@@ -413,6 +421,21 @@ const (
 	autoToolPreviewLines = 8
 	autoDiffPreviewLines = 16
 	expandedBodyCap      = 200
+	// thinkingTailLines is how many of the newest thinking rows stay visible
+	// while a block streams. The live tail keeps the reader following the
+	// model's reasoning without letting a long one push the transcript away,
+	// and it shows even when finished thinking is hidden.
+	thinkingTailLines = 3
+	// toolRunTailLines bounds the output a running tool streams in the
+	// collapsed default: only the newest rows stay visible, like the tail of
+	// a running command in a terminal.
+	toolRunTailLines = 5
+	// toolResultTailLines is how many trailing result rows a finished tool
+	// keeps below its one-line summary when its output folds.
+	toolResultTailLines = 2
+	// diffPreviewLines is how many leading diff rows a folded file mutation
+	// keeps below its count row.
+	diffPreviewLines = 4
 )
 
 // bodyLines counts the rendered lines of a block body.
@@ -465,25 +488,57 @@ func (t *transcript) renderTool(b *block, width int) string {
 		sections = append(sections, t.renderShellCommand(b.command, width))
 	}
 	if strings.TrimSpace(b.body) != "" {
-		lines := strings.Split(strings.TrimRight(b.body, "\n"), "\n")
-		if b.collapsed {
-			sections = append(sections, t.styles.faint.Render(fmt.Sprintf("… +%d lines (ctrl+o)", len(lines))))
-		} else {
-			hidden := 0
-			if len(lines) > expandedBodyCap {
-				hidden = len(lines) - expandedBodyCap
-				lines = lines[:expandedBodyCap]
-			}
-			sections = append(sections, t.styles.toolMeta.Width(width-2).Render(strings.Join(lines, "\n")))
-			if hidden > 0 {
-				sections = append(sections, t.styles.faint.Render(fmt.Sprintf("… +%d more lines", hidden)))
-			}
-		}
+		sections = append(sections, t.renderToolBody(b, width))
 	}
 	if len(sections) == 0 {
 		return head
 	}
 	return head + "\n" + indentLines(strings.Join(sections, "\n"), "  ")
+}
+
+// renderToolBody draws a tool's output under its head. A running tool in the
+// collapsed default keeps a live tail of its newest rows; a finished one that
+// folds keeps a one-line summary plus a short tail, where errors and final
+// results land; expanded output renders the whole body, capped by
+// expandedBodyCap.
+func (t *transcript) renderToolBody(b *block, width int) string {
+	lines := strings.Split(strings.TrimRight(b.body, "\n"), "\n")
+	switch {
+	case b.streaming && b.collapsed:
+		hidden := 0
+		if len(lines) > toolRunTailLines {
+			hidden = len(lines) - toolRunTailLines
+			lines = lines[len(lines)-toolRunTailLines:]
+		}
+		var out strings.Builder
+		if hidden > 0 {
+			out.WriteString(t.styles.faint.Render(fmt.Sprintf("… +%d lines (ctrl+o)", hidden)))
+			out.WriteString("\n")
+		}
+		out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
+		return out.String()
+
+	case !b.collapsed:
+		hidden := 0
+		if len(lines) > expandedBodyCap {
+			hidden = len(lines) - expandedBodyCap
+			lines = lines[:expandedBodyCap]
+		}
+		var out strings.Builder
+		out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
+		if hidden > 0 {
+			out.WriteString("\n" + t.styles.faint.Render(fmt.Sprintf("… +%d more lines", hidden)))
+		}
+		return out.String()
+
+	default:
+		if len(lines) <= toolResultTailLines {
+			return t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n"))
+		}
+		tail := lines[len(lines)-toolResultTailLines:]
+		summary := t.styles.faint.Render(fmt.Sprintf("⎿ %d lines (ctrl+o)", len(lines)))
+		return summary + "\n" + t.styles.toolMeta.Width(width-2).Render(strings.Join(tail, "\n"))
+	}
 }
 
 // shellCommandLineCap keeps a heredoc or a long script from taking over the
@@ -544,9 +599,30 @@ func (t *transcript) renderDiffBlock(b *block, width int) string {
 	var out strings.Builder
 	out.WriteString(head)
 	if b.collapsed && len(lines) > 0 {
+		// A folded mutation keeps its count row and the first changed rows,
+		// so the card still shows what the edit touches, not a bare count.
 		out.WriteString("\n  " + t.styles.faint.Render(fmt.Sprintf("… +%d lines (ctrl+o)", len(lines))))
-		lines = nil
+		preview := lines
+		if len(preview) > diffPreviewLines {
+			preview = preview[:diffPreviewLines]
+		}
+		out.WriteString(t.renderDiffRows(preview, textWidth, addTint, delTint))
+	} else {
+		out.WriteString(t.renderDiffRows(lines, textWidth, addTint, delTint))
 	}
+	if hidden > 0 {
+		out.WriteString("\n  " + t.styles.faint.Render(fmt.Sprintf("… +%d more lines", hidden)))
+	}
+	for _, line := range splitLines(b.body) {
+		out.WriteString("\n  " + t.styles.errorText.Render("! "+line))
+	}
+	return out.String()
+}
+
+// renderDiffRows draws diff rows with their marker column and background
+// tint, each indented under the block head.
+func (t *transcript) renderDiffRows(lines []diffLine, textWidth int, addTint, delTint string) string {
+	var out strings.Builder
 	for _, line := range lines {
 		marker := " "
 		style := t.styles.diffMeta
@@ -564,12 +640,6 @@ func (t *transcript) renderDiffBlock(b *block, width int) string {
 		}
 		out.WriteString("\n  ")
 		out.WriteString(tintLine(row, tint))
-	}
-	if hidden > 0 {
-		out.WriteString("\n  " + t.styles.faint.Render(fmt.Sprintf("… +%d more lines", hidden)))
-	}
-	for _, line := range splitLines(b.body) {
-		out.WriteString("\n  " + t.styles.errorText.Render("! "+line))
 	}
 	return out.String()
 }

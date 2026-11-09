@@ -92,7 +92,12 @@ storage; the resume-picker section below explains when it runs.
   retry and compaction labels, the elapsed clock, the token estimate and t/s
   rate of the block being written, and the pulsing marker.
 - `viewport.go` — transcript blocks, scrolling, incremental markdown, and the
-  rendered-content cache used by mouse selection.
+  rendered-content cache used by mouse selection. Tool cards are bounded
+  previews by default: a running tool streams a short live tail of its newest
+  rows, a folded result keeps a summary row plus its trailing rows, a folded
+  diff keeps its count row plus the first changed rows, and streaming
+  thinking shows a live tail even when finished thinking is hidden. `ctrl+o`
+  swaps every preview for the full body.
 - `selection.go` — cell-accurate text selection over the rendered transcript:
   viewport-to-content coordinates, reverse-video highlighting, and plain-text
   extraction for the clipboard.
