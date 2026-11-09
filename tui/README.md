@@ -47,6 +47,9 @@ subagents, no second agent loop, no parallel protocol.
 - Mouse selection in the transcript: drag to highlight, release to copy plain
   text through OSC52 and the platform clipboard; `shift+drag` keeps the
   terminal's native selection, and `/mouse` toggles capture at runtime
+- `/paste` reads the system clipboard directly into the prompt, so multi-line
+  text stays editable and a pasted newline can never submit the message; it is
+  the fallback for terminals without bracketed paste
 - A live blue activity bar above the composer names the current wait, thinking
   block, tool call, retry, or compaction, with a pulsing marker, an `Elapsed`
   clock, a `~N tokens` estimate of the block being written, and a live `t/s`
@@ -193,6 +196,12 @@ the caret, and dragging there copies the highlighted prompt text on release. In
 tmux, OSC52 copying needs `set-clipboard on`; the platform clipboard command is
 the fallback when `pie` runs locally.
 
+`/paste` reads the clipboard through the platform's reader (`pbpaste`,
+PowerShell, `wl-paste`, `xclip`, `xsel`, or Termux) and inserts it at the caret.
+The text never passes through the terminal's key parser, so newlines become
+literal line breaks in the prompt and cannot trigger a send even when the
+terminal lacks bracketed paste.
+
 ## Key bindings
 
 | Key | Action |
@@ -262,6 +271,7 @@ memory from other CLIs keeps working.
 | `/title` | | regenerate the title from the transcript with a one-shot model call |
 | `/cwd` | `/dir`, `/project` | switch working directory; no argument opens the project picker |
 | `/image` | | attach a local image to a prompt (`/image shot.png what is this?`) |
+| `/paste` | | paste the system clipboard into the prompt as text |
 | `/context` | `/tools-view` | system prompt and tool definitions published by the bridge |
 | `/search` | | search session names, folders, and transcripts |
 | `/fork` | | fork from a user message; the prompt returns to the editor |

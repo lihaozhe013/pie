@@ -107,8 +107,10 @@ storage; the resume-picker section below explains when it runs.
 - `selection.go` — cell-accurate text selection over the rendered transcript:
   viewport-to-content coordinates, reverse-video highlighting, and plain-text
   extraction for the clipboard.
-- `clipboard.go` — OSC52 plus platform clipboard commands, run asynchronously
-  so a slow clipboard tool cannot stall the event loop.
+- `clipboard.go` — OSC52 plus platform clipboard commands for both directions.
+  Reads and writes run asynchronously so a slow clipboard tool cannot stall the
+  event loop. `/paste` inserts the sanitized result at the caret without routing
+  it through key handling, so pasted newlines never submit a prompt.
 - `input.go` — the prompt editor and slash completion. The editor is written
   directly against the buffer instead of nesting `bubbles/textarea`: the
   widget paints a full-line cursor background, moves across logical lines and

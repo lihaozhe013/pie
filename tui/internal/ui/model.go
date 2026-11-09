@@ -943,6 +943,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case pastedMsg:
+		if msg.err != nil {
+			m.setToast("paste failed: " + msg.err.Error())
+			return m, nil
+		}
+		if msg.chars == 0 {
+			m.setToast("clipboard is empty")
+			return m, nil
+		}
+		// The text never passed through key handling, so its newlines are
+		// buffer text and cannot submit the prompt.
+		m.composer.InsertText(msg.text)
+		m.completion.Refresh(m.composer.Value())
+		m.layout()
+		if msg.lines > 1 {
+			m.setToast(fmt.Sprintf("pasted %d lines", msg.lines))
+		} else {
+			m.setToast(fmt.Sprintf("pasted %d chars", msg.chars))
+		}
+		return m, nil
+
 	case autoTitleRetryMsg:
 		if msg.sessionID == "" || msg.sessionID != m.state.SessionID || m.state.SessionName != "" ||
 			m.titleRunning || !m.autoTitlePending {

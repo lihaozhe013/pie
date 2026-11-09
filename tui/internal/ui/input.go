@@ -155,6 +155,13 @@ func (c *composer) SetText(value string) {
 	c.rewrap()
 }
 
+// InsertText adds text at the caret without submitting it. Clipboard content
+// goes through here so pasted newlines stay literal buffer text.
+func (c *composer) InsertText(text string) {
+	c.ClearSelection()
+	c.insert(text)
+}
+
 func (c *composer) InsertNewline() {
 	c.insert("\n")
 }

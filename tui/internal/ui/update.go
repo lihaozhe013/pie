@@ -1047,6 +1047,8 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		return m.openContext(), true
 	case "/image":
 		return m.sendImage(argument), true
+	case "/paste":
+		return readClipboard(), true
 	case "/cwd":
 		if argument != "" {
 			return m.switchProject(argument), true

@@ -38,6 +38,7 @@ var builtinCommandTable = []builtinCommand{
 	{Name: "/goal", Detail: "goal status and controls"},
 	{Name: "/cwd", Detail: "switch working directory", Aliases: []string{"/dir", "/project"}},
 	{Name: "/image", Detail: "attach an image to a prompt"},
+	{Name: "/paste", Detail: "paste the clipboard into the prompt"},
 	{Name: "/context", Detail: "system prompt and tool definitions", Aliases: []string{"/tools-view"}},
 	{Name: "/search", Detail: "search session names, folders, and transcripts"},
 	{Name: "/fork", Detail: "fork the session from a user message"},
