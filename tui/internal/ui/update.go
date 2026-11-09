@@ -250,9 +250,8 @@ func (m *Model) applyStreamUpdate(update *rpc.MessageUpdateEvent) {
 		m.activity.draftTool = ""
 		m.activity.ensureStarted()
 		if m.stream.thinking == nil {
-			m.stream.thinking = newBlock(blockThinking, "")
+			m.stream.thinking = m.newThinkingBlock("")
 			m.stream.thinking.streaming = true
-			m.stream.thinking.collapsed = !m.showThinking
 			m.transcript.Add(m.stream.thinking)
 		}
 		m.stream.thinking.setText(m.stream.acc.Thinking())
@@ -318,9 +317,7 @@ func (m *Model) applyMessageEnd(message rpc.Message) {
 			m.stream.thinking.streaming = false
 		}
 		if thinking := messageThinking(message); thinking != "" && m.stream.thinking == nil {
-			block := newBlock(blockThinking, thinking)
-			block.collapsed = !m.showThinking
-			m.transcript.Add(block)
+			m.transcript.Add(m.newThinkingBlock(thinking))
 		}
 		// Stream state is per message: drop it so the next assistant message
 		// appends fresh blocks after this message's tool calls. message_start
@@ -535,9 +532,7 @@ func (m *Model) loadHistory(messages []rpc.Message) {
 			m.transcript.Add(newBlock(blockUser, text))
 		case "assistant":
 			if thinking := messageThinking(message); thinking != "" {
-				block := newBlock(blockThinking, thinking)
-				block.collapsed = !m.showThinking
-				m.transcript.Add(block)
+				m.transcript.Add(m.newThinkingBlock(thinking))
 			}
 			if text := message.Text(); strings.TrimSpace(text) != "" {
 				m.transcript.Add(newBlock(blockAssistant, text))
@@ -724,7 +719,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = m.prefs.SetShowThinking(m.showThinking)
 		}
 		m.applyThinkingVisibility()
-		m.setToast(fmt.Sprintf("thinking blocks %s", onOff(m.showThinking)))
+		m.setToast(fmt.Sprintf("thinking previews %s", onOff(m.showThinking)))
 		return m, nil
 
 	case "ctrl+o":
@@ -733,7 +728,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			_ = m.prefs.SetExpandTools(m.expanded)
 		}
 		m.applyExpansion()
-		m.setToast(fmt.Sprintf("tool output %s", onOff(m.expanded)))
+		m.setToast(fmt.Sprintf("expanded output %s", onOff(m.expanded)))
 		return m, nil
 
 	case "ctrl+l":
@@ -800,29 +795,32 @@ func (m *Model) applyThinkingVisibility() {
 	m.transcript.MarkDirty()
 }
 
-// syncBlockExpansion re-evaluates a tool or diff block's default collapsed
-// state after its body changes. Short bodies stay visible like a terminal
-// session; long ones fold to their summary and preview rows. A running tool
-// keeps its bounded live tail in the collapsed default instead of streaming
-// its whole log, and folds or expands with everything else once it finishes.
+// newThinkingBlock builds a reasoning block with the current ctrl+t visibility
+// and ctrl+o expansion preferences.
+func (m *Model) newThinkingBlock(text string) *block {
+	block := newBlock(blockThinking, text)
+	block.collapsed = !m.showThinking
+	block.full = m.expanded
+	return block
+}
+
+// syncBlockExpansion applies the ctrl+o preference to tool and diff cards.
+// Collapsed cards always render a bounded preview, so a finished call never
+// changes the transcript height when its result arrives.
 func (m *Model) syncBlockExpansion(b *block) {
 	if b.kind != blockTool && b.kind != blockDiff {
 		return
 	}
-	if b.streaming && b.kind == blockTool {
-		b.collapsed = !m.expanded
-		return
-	}
-	rows := bodyLines(b.body)
-	if b.kind == blockDiff {
-		rows += len(b.diff)
-	}
-	b.collapsed = !m.expanded && autoCollapsed(b.kind, rows)
+	b.collapsed = !m.expanded
 }
 
 func (m *Model) applyExpansion() {
 	for _, block := range m.transcript.Blocks() {
-		if block.kind == blockTool || block.kind == blockDiff {
+		switch block.kind {
+		case blockThinking:
+			block.full = m.expanded
+			block.invalidate()
+		case blockTool, blockDiff:
 			m.syncBlockExpansion(block)
 			block.invalidate()
 		}
@@ -1139,8 +1137,8 @@ func (m *Model) helpItems() []pickerItem {
 		{"ctrl+p", "open the command palette"},
 		{"shift+up / shift+down", "raise or lower the reasoning level"},
 		{"shift+tab", "toggle plan mode and restore the previous preset"},
-		{"ctrl+t", "toggle thinking blocks"},
-		{"ctrl+o", "expand tool output and diffs"},
+		{"ctrl+t", "show/hide thinking previews"},
+		{"ctrl+o", "expand thinking, tool output, and diffs"},
 		{"ctrl+l", "clear the scrollback"},
 		{"up / down", "prompt history"},
 		{"pgup / pgdn / ctrl+u", "scroll the transcript"},

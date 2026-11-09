@@ -434,7 +434,7 @@ the full suite is not run.
   terminal palette and density mapping.
 - General language switching, PWA push, and web login/logout: not applicable.
   Quote-selection, transcript tool cards, and side-by-side diff become terminal
-  equivalents only: ctrl+o expands tool output and diffs in place.
+  equivalents only: ctrl+o expands thinking, tool output, and diffs in place.
 - Provider sign-in is bridged through the extension, so the TUI runs the same
   OAuth and API-key flows as Pie and writes the same `auth.json`. Subscription
   usage and quota use the same bridge: `/pie-usage` resolves auth through pi

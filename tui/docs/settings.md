@@ -67,8 +67,8 @@ shared `settings.json` values.
 | --- | --- | --- |
 | Theme | `pie-settings.json` | Pie's palette names; applies immediately. |
 | Enter sends | `pie-settings.json` | When off, enter inserts a newline and alt+enter sends. |
-| Thinking blocks | `pie-settings.json` | Same as `ctrl+t`; hidden thinking still streams a live tail. |
-| Expand tool output | `pie-settings.json` | Same as `ctrl+o`; collapsed tools keep a live tail while running and a summary plus trailing rows when folded. |
+| Thinking blocks | `pie-settings.json` | Same as `ctrl+t`; visible thinking keeps its newest three rows, and hidden thinking does not render at all. |
+| Expand output | `pie-settings.json` | Same as `ctrl+o`; expands thinking, tool output, and diffs. Collapsed cards always keep a fixed preview. |
 | Cache-miss notices | `settings.json` (`showCacheMissNotices`) | pi reads it on start or reload. |
 | Session directory | `settings.json` (`sessionDir`) | Blank uses pi's default under the agent directory. |
 | Agent directory | read-only | `PI_CODING_AGENT_DIR` or `~/.pi/agent`. |

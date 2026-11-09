@@ -955,7 +955,7 @@ func (m *Model) generalSettingsTab() settingsTab {
 			settingsRow{
 				ID:    "show-thinking",
 				Label: "Thinking blocks",
-				Help:  "Show reasoning blocks in the transcript (also ctrl+t).",
+				Help:  "Show a short reasoning preview in the transcript (also ctrl+t).",
 				Kind:  settingsToggle,
 				Bool:  m.prefs.ShowThinking,
 				SetBool: func(on bool) error {
@@ -969,8 +969,8 @@ func (m *Model) generalSettingsTab() settingsTab {
 			},
 			settingsRow{
 				ID:    "expand-tools",
-				Label: "Expand tool output",
-				Help:  "Show every tool body in full; when off, long outputs fold (also ctrl+o).",
+				Label: "Expand output",
+				Help:  "Show full thinking, tool output, and diffs; when off, previews stay folded (also ctrl+o).",
 				Kind:  settingsToggle,
 				Bool:  m.prefs.ExpandTools,
 				SetBool: func(on bool) error {

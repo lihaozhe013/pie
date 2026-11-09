@@ -57,7 +57,7 @@ subagents, no second agent loop, no parallel protocol.
 - Tool calls rendered as compact lines; shell commands and `edit`/`write`
   diffs are syntax-highlighted from the tool's file type, with added and
   removed diff rows tinted green and red
-- Thinking blocks (toggle with `ctrl+t`), a staged queue above the prompt for
+- Thinking previews (toggle with `ctrl+t`), a staged queue above the prompt for
   follow-ups and steering, and abort
 - Model picker, thinking-level cycling, session rename/resume/new, compaction,
   HTML export, and token/context statistics. The chosen model is saved to pi's
@@ -219,8 +219,8 @@ terminal lacks bracketed paste.
 | `ctrl+p` | open the command palette |
 | `shift+up` / `shift+down` | raise or lower the reasoning level |
 | `shift+tab` | toggle plan mode and restore the previous preset |
-| `ctrl+t` | show/hide thinking blocks |
-| `ctrl+o` | expand or collapse tool output and diffs |
+| `ctrl+t` | show/hide thinking previews |
+| `ctrl+o` | expand or collapse thinking, tool output, and diffs |
 | `ctrl+l` | clear the scrollback |
 | `tab` | accept a slash-command completion |
 | `up` / `down` | move inside the prompt; prompt history from the first or last row |
@@ -238,6 +238,11 @@ While a turn runs, `enter` stages a follow-up and `alt+s` stages a steering
 message in the queue above the prompt. The transcript gains the message only
 when pi actually delivers it, so a queued steer never looks like it already
 joined the conversation.
+
+Preview heights are fixed: a visible thinking block keeps its newest three
+rows, a tool card keeps its newest five output rows whether it is running or
+finished, and a folded diff keeps its first changed rows. `ctrl+o` expands a
+preview in place.
 
 ### Settings and domain pages
 

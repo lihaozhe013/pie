@@ -56,6 +56,10 @@ type block struct {
 	welcome *welcomeCard
 
 	collapsed bool
+	// full marks a thinking block expanded with ctrl+o. Tool and diff cards use
+	// collapsed for the same decision because their collapsed flag is the
+	// preview rather than the ctrl+t hidden state.
+	full      bool
 	streaming bool
 	revision  int
 
@@ -388,11 +392,9 @@ func (t *transcript) renderAssistant(b *block, width int) string {
 }
 
 func (t *transcript) renderThinking(b *block, width int) string {
-	// Hidden finished thinking renders nothing, header included: a lone
-	// "thinking" label would only add a useless row to the scrollback.
-	// Streaming thinking still shows its live tail, so the reader can follow
-	// the model's progress even with finished thinking hidden.
-	if b.collapsed && !b.streaming {
+	// ctrl+t hides thinking completely, streaming included, so a hidden block
+	// never makes the transcript grow and shrink around a reasoning turn.
+	if b.collapsed {
 		return ""
 	}
 	head := t.styles.thinkingHead.Render("○ thinking")
@@ -405,56 +407,45 @@ func (t *transcript) renderThinking(b *block, width int) string {
 		return head
 	}
 	lines := strings.Split(text, "\n")
-	if b.streaming && len(lines) > thinkingTailLines {
+	hidden := 0
+	if b.full {
+		if len(lines) > expandedBodyCap {
+			hidden = len(lines) - expandedBodyCap
+			lines = lines[:expandedBodyCap]
+		}
+	} else if len(lines) > thinkingTailLines {
+		hidden = len(lines) - thinkingTailLines
 		lines = lines[len(lines)-thinkingTailLines:]
-		lines = append([]string{"…"}, lines...)
 	}
-	body := t.styles.thinkingBody.Width(width - 2).Render(strings.Join(lines, "\n"))
-	return head + "\n" + indentLines(body, "  ")
+	var out strings.Builder
+	if hidden > 0 {
+		label := fmt.Sprintf("… +%d lines (ctrl+o)", hidden)
+		if b.full {
+			label = fmt.Sprintf("… +%d more lines", hidden)
+		}
+		out.WriteString(t.styles.faint.Render(label))
+		out.WriteString("\n")
+	}
+	out.WriteString(t.styles.thinkingBody.Width(width - 2).Render(strings.Join(lines, "\n")))
+	return head + "\n" + indentLines(out.String(), "  ")
 }
 
-// Auto-preview thresholds keep the transcript scannable the way mature CLI
-// agents do: short command output and small diffs stay visible like a
-// terminal session while longer bodies fold to their one-line summary.
-// Ctrl+o reveals everything; expandedBodyCap bounds what that renders.
+// Preview sizes are fixed so a finished block never changes the transcript
+// height: thinking keeps its newest rows, tools keep their newest output rows,
+// and a folded diff keeps its leading changed rows. ctrl+o expands a preview in
+// place; expandedBodyCap bounds what that renders.
 const (
-	autoToolPreviewLines = 8
-	autoDiffPreviewLines = 16
-	expandedBodyCap      = 200
-	// thinkingTailLines is how many of the newest thinking rows stay visible
-	// while a block streams. The live tail keeps the reader following the
-	// model's reasoning without letting a long one push the transcript away,
-	// and it shows even when finished thinking is hidden.
+	expandedBodyCap = 200
+	// thinkingTailLines is how many of the newest thinking rows a visible
+	// preview keeps. ctrl+o expands it; ctrl+t hides the block entirely.
 	thinkingTailLines = 3
-	// toolRunTailLines bounds the output a running tool streams in the
-	// collapsed default: only the newest rows stay visible, like the tail of
-	// a running command in a terminal.
-	toolRunTailLines = 5
-	// toolResultTailLines is how many trailing result rows a finished tool
-	// keeps below its one-line summary when its output folds.
-	toolResultTailLines = 2
+	// toolTailLines is how many of the newest output rows a collapsed tool
+	// keeps, whether it is still running or already finished.
+	toolTailLines = 5
 	// diffPreviewLines is how many leading diff rows a folded file mutation
 	// keeps below its count row.
 	diffPreviewLines = 4
 )
-
-// bodyLines counts the rendered lines of a block body.
-func bodyLines(body string) int {
-	body = strings.TrimRight(body, "\n")
-	if body == "" {
-		return 0
-	}
-	return strings.Count(body, "\n") + 1
-}
-
-// autoCollapsed reports whether a block's rendered rows exceed its default
-// preview size.
-func autoCollapsed(kind blockKind, rows int) bool {
-	if kind == blockDiff {
-		return rows > autoDiffPreviewLines
-	}
-	return rows > autoToolPreviewLines
-}
 
 func (t *transcript) renderTool(b *block, width int) string {
 	marker := "~"
@@ -496,49 +487,33 @@ func (t *transcript) renderTool(b *block, width int) string {
 	return head + "\n" + indentLines(strings.Join(sections, "\n"), "  ")
 }
 
-// renderToolBody draws a tool's output under its head. A running tool in the
-// collapsed default keeps a live tail of its newest rows; a finished one that
-// folds keeps a one-line summary plus a short tail, where errors and final
-// results land; expanded output renders the whole body, capped by
-// expandedBodyCap.
+// renderToolBody draws a tool's output under its head. A collapsed card keeps
+// the newest toolTailLines rows whether the call is running or finished, so
+// the result never changes the transcript height. ctrl+o renders the full body
+// up to expandedBodyCap.
 func (t *transcript) renderToolBody(b *block, width int) string {
 	lines := strings.Split(strings.TrimRight(b.body, "\n"), "\n")
-	switch {
-	case b.streaming && b.collapsed:
-		hidden := 0
-		if len(lines) > toolRunTailLines {
-			hidden = len(lines) - toolRunTailLines
-			lines = lines[len(lines)-toolRunTailLines:]
+	hidden := 0
+	if b.collapsed {
+		if len(lines) > toolTailLines {
+			hidden = len(lines) - toolTailLines
+			lines = lines[len(lines)-toolTailLines:]
 		}
-		var out strings.Builder
-		if hidden > 0 {
-			out.WriteString(t.styles.faint.Render(fmt.Sprintf("… +%d lines (ctrl+o)", hidden)))
-			out.WriteString("\n")
-		}
-		out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
-		return out.String()
-
-	case !b.collapsed:
-		hidden := 0
-		if len(lines) > expandedBodyCap {
-			hidden = len(lines) - expandedBodyCap
-			lines = lines[:expandedBodyCap]
-		}
-		var out strings.Builder
-		out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
-		if hidden > 0 {
-			out.WriteString("\n" + t.styles.faint.Render(fmt.Sprintf("… +%d more lines", hidden)))
-		}
-		return out.String()
-
-	default:
-		if len(lines) <= toolResultTailLines {
-			return t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n"))
-		}
-		tail := lines[len(lines)-toolResultTailLines:]
-		summary := t.styles.faint.Render(fmt.Sprintf("⎿ %d lines (ctrl+o)", len(lines)))
-		return summary + "\n" + t.styles.toolMeta.Width(width-2).Render(strings.Join(tail, "\n"))
+	} else if len(lines) > expandedBodyCap {
+		hidden = len(lines) - expandedBodyCap
+		lines = lines[:expandedBodyCap]
 	}
+	var out strings.Builder
+	if hidden > 0 {
+		label := fmt.Sprintf("… +%d lines (ctrl+o)", hidden)
+		if !b.collapsed {
+			label = fmt.Sprintf("… +%d more lines", hidden)
+		}
+		out.WriteString(t.styles.faint.Render(label))
+		out.WriteString("\n")
+	}
+	out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
+	return out.String()
 }
 
 // shellCommandLineCap keeps a heredoc or a long script from taking over the

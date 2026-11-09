@@ -101,12 +101,12 @@ storage; the resume-picker section below explains when it runs.
   renders pi's `queue_update` lists and caps them to a few preview rows so a
   long queue cannot crowd out the transcript.
 - `viewport.go` — transcript blocks, scrolling, incremental markdown, and the
-  rendered-content cache used by mouse selection. Tool cards are bounded
-  previews by default: a running tool streams a short live tail of its newest
-  rows, a folded result keeps a summary row plus its trailing rows, a folded
-  diff keeps its count row plus the first changed rows, and streaming
-  thinking shows a live tail even when finished thinking is hidden. `ctrl+o`
-  swaps every preview for the full body.
+  rendered-content cache used by mouse selection. Preview heights are fixed so
+  a finished block never moves the transcript: a collapsed tool keeps its
+  newest five output rows whether running or finished, a folded diff keeps its
+  count row plus the first changed rows, and visible thinking keeps its newest
+  three rows. `ctrl+o` swaps every preview for the full body up to 200 rows;
+  `ctrl+t` hides thinking entirely, streaming included.
 - `selection.go` — cell-accurate text selection over the rendered transcript:
   viewport-to-content coordinates, reverse-video highlighting, and plain-text
   extraction for the clipboard.
