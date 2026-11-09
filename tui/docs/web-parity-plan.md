@@ -13,6 +13,11 @@ Status: implemented. Every phase below landed; `settings.md` is the
 delivered settings reference and `../README.md` lists the final commands. The
 bridge-extension approach in section 6.4 is what shipped.
 
+The TUI settings shell has since been redesigned: `/settings` holds General,
+Instructions, and Tools, while Models, Providers, Skills, MCP, and Plugins are
+domain pages with their own commands. The shared configuration contract below is
+unchanged; `settings.md` describes the current entry points.
+
 ## 1. Goal
 
 `pie` must offer the same conversation features and the same configuration

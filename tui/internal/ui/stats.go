@@ -83,8 +83,7 @@ func (m *Model) showStatsPanel() {
 	}
 	panel := newSettingsPanel("Statistics", []settingsTab{tab})
 	panel.action = "stats"
-	m.settingsPanel = panel
-	m.openOverlay(&overlay{kind: overlaySettings, action: "stats", settings: panel})
+	m.showPage(panel)
 }
 
 // statsPanelOpen reports whether the statistics panel is the active overlay.

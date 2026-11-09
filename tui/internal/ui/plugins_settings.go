@@ -245,8 +245,9 @@ func (m *Model) openPackageDetail(entry config.Package, scope string) tea.Cmd {
 		},
 	}
 	panel := newSettingsPanel("Package · "+entry.Source, []settingsTab{tab})
-	m.settingsPanel = panel
-	m.openOverlay(&overlay{kind: overlaySettings, action: "package-detail", settings: panel})
+	panel.action = "package-detail"
+	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("plugins") }
+	m.showPage(panel)
 	return nil
 }
 

@@ -20,122 +20,118 @@ type catalogRefreshedMsg struct {
 	output string
 }
 
-// modelsSettingsTab is Settings › Models. It owns model selection, enabling,
-// reasoning, and context windows; provider credentials and endpoints live in
-// Settings › Providers.
-func (m *Model) modelsSettingsTab() settingsTab {
-	tab := settingsTab{
-		ID:    "models",
+// modelsSettingsTabs builds the Models page. It owns model selection,
+// enabling, reasoning, and context windows; provider credentials and endpoints
+// live on the Providers page.
+func (m *Model) modelsSettingsTabs() []settingsTab {
+	defaults := settingsTab{
+		ID:    "models-defaults",
+		Label: "Defaults",
+		Note:  "Applies when pie starts; Pie applies it to its new sessions.",
+	}
+	selection := settingsTab{
+		ID:    "models-selection",
 		Label: "Models",
 		Note:  "The catalog comes from pi; models.json overrides model metadata.",
 	}
+	catalog := settingsTab{ID: "models-catalog", Label: "Catalog"}
+
 	if m.settings == nil {
 		reason := "settings.json is unavailable"
 		if m.configErr != nil {
 			reason += ": " + m.configErr.Error()
 		}
-		tab.Rows = append(tab.Rows, settingsRow{
+		defaults.Rows = append(defaults.Rows, settingsRow{
 			ID:      "models-settings-error",
 			Label:   "Settings",
 			Kind:    settingsInfo,
 			Current: func() string { return reason },
 		})
-		return tab
+		return []settingsTab{defaults}
 	}
+
 	projectScope := m.projectScope("defaultModel", "defaultThinkingLevel", "enabledModels", "modelThinkingLevels")
 
-	if m.catalogErr != nil {
-		tab.Rows = append(tab.Rows, settingsRow{
-			ID:      "catalog-error",
-			Label:   "Catalog",
+	defaults.Rows = append(defaults.Rows,
+		settingsRow{
+			ID:    "default-model",
+			Label: "Default model",
+			Help:  "Applies when pie starts; Pie applies it to its new sessions. Picking a model also writes its provider.",
+			Kind:  settingsChoice,
+			Current: func() string {
+				provider, _ := m.settings.DefaultProvider()
+				model, _ := m.settings.DefaultModel()
+				if model == "" {
+					return "auto"
+				}
+				if provider != "" {
+					return provider + "/" + model
+				}
+				return model
+			},
+			Choices: m.modelChoices(),
+			Apply: func(value string) error {
+				if value == "auto" {
+					return m.settings.SetDefaultModel("")
+				}
+				provider, model := splitModelRef(value)
+				if provider != "" {
+					if err := m.settings.SetDefaultProvider(provider); err != nil {
+						return err
+					}
+				}
+				return m.settings.SetDefaultModel(model)
+			},
+		},
+		settingsRow{
+			ID:      "default-thinking",
+			Label:   "Default thinking level",
+			Help:    "Applies when pie starts; Pie applies it to its new sessions.",
+			Kind:    settingsChoice,
+			Current: func() string { level, _ := m.settings.DefaultThinkingLevel(); return level },
+			Choices: thinkingLevelChoices(false),
+			Apply:   m.settings.SetDefaultThinkingLevel,
+		},
+		settingsRow{
+			ID:        "context-limit",
+			Label:     "Context window limit",
+			Help:      "Shared with Pie, which applies the cap to its sessions; pi itself keeps the native window in the terminal. Blank or 'none' removes the cap; the default is 350000.",
+			Kind:      settingsText,
+			Current:   m.contextLimitLabel,
+			EditValue: m.contextLimitEditValue,
+			Apply:     m.setContextLimit,
+		},
+		settingsRow{
+			ID:      "project-scope",
+			Label:   "Project overrides",
 			Kind:    settingsInfo,
-			Current: func() string { return "unavailable: " + m.catalogErr.Error() },
-		})
-	} else if m.catalog != nil {
-		tab.Rows = append(tab.Rows, settingsRow{
-			ID:    "catalog-summary",
-			Label: "Catalog",
+			Current: func() string { return projectScope },
+			Help:    "A project .pi/settings.json key wins over the global value this page edits.",
+		},
+	)
+
+	selection.Rows = append(selection.Rows,
+		settingsRow{
+			ID:    "enabled-summary",
+			Label: "Enabled models",
 			Kind:  settingsInfo,
 			Current: func() string {
-				return fmt.Sprintf("%d providers · %d models", len(m.catalog.Providers), len(m.catalog.Models()))
+				if m.catalog == nil {
+					return "unknown"
+				}
+				enabled := 0
+				for _, on := range m.enabledModels {
+					if on {
+						enabled++
+					}
+				}
+				patterns, present, _ := m.settings.EnabledModels()
+				if !present {
+					return fmt.Sprintf("all %d", len(m.catalog.Models()))
+				}
+				return fmt.Sprintf("%d of %d · %d patterns", enabled, len(m.catalog.Models()), len(patterns))
 			},
-		})
-	}
-
-	tab.Rows = append(tab.Rows, settingsRow{
-		ID:    "default-model",
-		Label: "Default model",
-		Help:  "Applies when pie starts; Pie applies it to its new sessions. Picking a model also writes its provider.",
-		Kind:  settingsChoice,
-		Current: func() string {
-			provider, _ := m.settings.DefaultProvider()
-			model, _ := m.settings.DefaultModel()
-			if model == "" {
-				return "auto"
-			}
-			if provider != "" {
-				return provider + "/" + model
-			}
-			return model
 		},
-		Choices: m.modelChoices(),
-		Apply: func(value string) error {
-			if value == "auto" {
-				return m.settings.SetDefaultModel("")
-			}
-			provider, model := splitModelRef(value)
-			if provider != "" {
-				if err := m.settings.SetDefaultProvider(provider); err != nil {
-					return err
-				}
-			}
-			return m.settings.SetDefaultModel(model)
-		},
-	})
-
-	tab.Rows = append(tab.Rows, settingsRow{
-		ID:      "default-thinking",
-		Label:   "Default thinking level",
-		Help:    "Applies when pie starts; Pie applies it to its new sessions.",
-		Kind:    settingsChoice,
-		Current: func() string { level, _ := m.settings.DefaultThinkingLevel(); return level },
-		Choices: thinkingLevelChoices(false),
-		Apply:   m.settings.SetDefaultThinkingLevel,
-	})
-
-	tab.Rows = append(tab.Rows, settingsRow{
-		ID:        "context-limit",
-		Label:     "Context window limit",
-		Help:      "Shared with Pie, which applies the cap to its sessions; pi itself keeps the native window in the terminal. Blank or 'none' removes the cap; the default is 350000.",
-		Kind:      settingsText,
-		Current:   m.contextLimitLabel,
-		EditValue: m.contextLimitEditValue,
-		Apply:     m.setContextLimit,
-	})
-
-	tab.Rows = append(tab.Rows, settingsRow{
-		ID:    "enabled-summary",
-		Label: "Enabled models",
-		Kind:  settingsInfo,
-		Current: func() string {
-			if m.catalog == nil {
-				return "unknown"
-			}
-			enabled := 0
-			for _, on := range m.enabledModels {
-				if on {
-					enabled++
-				}
-			}
-			patterns, present, _ := m.settings.EnabledModels()
-			if !present {
-				return fmt.Sprintf("all %d", len(m.catalog.Models()))
-			}
-			return fmt.Sprintf("%d of %d · %d patterns", enabled, len(m.catalog.Models()), len(patterns))
-		},
-	})
-
-	tab.Rows = append(tab.Rows,
 		settingsRow{
 			ID:    "manage-enabled",
 			Label: "Manage enabled models",
@@ -166,25 +162,36 @@ func (m *Model) modelsSettingsTab() settingsTab {
 				return nil
 			},
 		},
-		settingsRow{
-			ID:      "project-scope",
-			Label:   "Project overrides",
-			Kind:    settingsInfo,
-			Current: func() string { return projectScope },
-			Help:    "A project .pi/settings.json key wins over the global value this panel edits.",
-		},
-		settingsRow{
-			ID:    "refresh-catalog",
-			Label: "Refresh model catalog",
-			Help:  "Runs `pi update --models`; new models appear after it finishes.",
-			Kind:  settingsAction,
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				return m.refreshCatalog()
-			},
-		},
 	)
 
-	return tab
+	if m.catalogErr != nil {
+		catalog.Rows = append(catalog.Rows, settingsRow{
+			ID:      "catalog-error",
+			Label:   "Catalog",
+			Kind:    settingsInfo,
+			Current: func() string { return "unavailable: " + m.catalogErr.Error() },
+		})
+	} else if m.catalog != nil {
+		catalog.Rows = append(catalog.Rows, settingsRow{
+			ID:    "catalog-summary",
+			Label: "Catalog",
+			Kind:  settingsInfo,
+			Current: func() string {
+				return fmt.Sprintf("%d providers · %d models", len(m.catalog.Providers), len(m.catalog.Models()))
+			},
+		})
+	}
+	catalog.Rows = append(catalog.Rows, settingsRow{
+		ID:    "refresh-catalog",
+		Label: "Refresh model catalog",
+		Help:  "Runs `pi update --models`; new models appear after it finishes.",
+		Kind:  settingsAction,
+		Run: func(m *Model, _ *settingsState) tea.Cmd {
+			return m.refreshCatalog()
+		},
+	})
+
+	return []settingsTab{defaults, selection, catalog}
 }
 
 func (m *Model) contextLimitLabel() string {

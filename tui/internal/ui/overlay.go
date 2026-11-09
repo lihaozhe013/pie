@@ -45,10 +45,6 @@ type overlay struct {
 	filtered []pickerItem
 	cursor   int
 
-	// fuzzyFilter ranks rows by fuzzy match instead of plain substring
-	// filtering; the settings search opts in.
-	fuzzyFilter bool
-
 	filter textinput.Model
 	editor textarea.Model
 
@@ -172,10 +168,6 @@ func (o *overlay) refilter() {
 	switch {
 	case query == "":
 		o.filtered = append(o.filtered, o.items...)
-	case o.fuzzyFilter:
-		o.filtered = fuzzyFilterItems(o.items, query)
-		// A new query is a new ranking; start at the best match.
-		o.cursor = 0
 	default:
 		for _, item := range o.items {
 			haystack := strings.ToLower(item.Label + " " + item.Detail + " " + item.Keywords)
@@ -258,7 +250,10 @@ func (o *overlay) Resize(width, height int) {
 	boxWidth := width - 8
 	maxWidth := 72
 	if o.kind == overlaySettings {
-		maxWidth = 96
+		// A settings page is a page, not a dialog: it fills the transcript
+		// area and only gives up its border columns.
+		boxWidth = width - 2
+		maxWidth = 118
 	}
 	if boxWidth > maxWidth {
 		boxWidth = maxWidth
@@ -282,7 +277,7 @@ func (o *overlay) View(st styles) string {
 		if o.settings == nil {
 			return st.overlayBox.Render("settings unavailable")
 		}
-		return o.settings.View(st, o.width+8, o.height)
+		return o.settings.View(st, o.width, o.height)
 	}
 
 	var body strings.Builder

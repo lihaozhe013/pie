@@ -203,8 +203,9 @@ func (m *Model) openSkillDetail(skill skills.Skill) tea.Cmd {
 		},
 	}
 	panel := newSettingsPanel("Skill · "+skill.Name, []settingsTab{tab})
-	m.settingsPanel = panel
-	m.openOverlay(&overlay{kind: overlaySettings, action: "skill-detail", settings: panel})
+	panel.action = "skill-detail"
+	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("skills") }
+	m.showPage(panel)
 	return nil
 }
 

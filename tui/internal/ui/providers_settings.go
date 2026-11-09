@@ -11,9 +11,9 @@ import (
 	"github.com/lihaozhe013/pie/tui/internal/providerusage"
 )
 
-// providersSettingsTab is Settings › Providers. It owns credentials, default
+// providersSettingsTab builds the Providers page. It owns credentials, default
 // provider selection, compatible endpoints, and subscription usage; model
-// selection and metadata stay in Settings › Models.
+// selection and metadata stay on the Models page.
 func (m *Model) providersSettingsTab() settingsTab {
 	tab := settingsTab{
 		ID:    "providers",

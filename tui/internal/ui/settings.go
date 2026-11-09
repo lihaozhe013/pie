@@ -3,6 +3,7 @@ package ui
 import (
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +22,7 @@ const (
 	settingsAction
 )
 
-// settingsRow is one editable line of the settings panel.
+// settingsRow is one editable line of a settings group.
 type settingsRow struct {
 	ID    string
 	Label string
@@ -37,7 +38,8 @@ type settingsRow struct {
 	Run       func(m *Model, s *settingsState) tea.Cmd
 }
 
-// settingsTab is one section of the panel.
+// settingsTab is one group of rows: a category on the Settings page, or a
+// section on a domain page such as Models.
 type settingsTab struct {
 	ID    string
 	Label string
@@ -45,271 +47,383 @@ type settingsTab struct {
 	Rows  []settingsRow
 }
 
+// settingsPageMode selects how a page presents its groups.
+type settingsPageMode int
+
+const (
+	// pageCategories is the Settings home: a category bar shows one group at a
+	// time and the filter spans every group.
+	pageCategories settingsPageMode = iota
+	// pageSections stacks every group under its own heading, the way a domain
+	// page such as Models reads.
+	pageSections
+)
+
+// settingsPage is one top-level panel. The Settings home is the only page that
+// uses pageCategories; domain pages use pageSections.
+type settingsPage struct {
+	ID    string
+	Title string
+	Mode  settingsPageMode
+	Tabs  []settingsTab
+}
+
+// settingsTarget identifies one row inside the page.
+type settingsTarget struct {
+	group int
+	row   int
+}
+
 // settingsState survives a round trip through a picker or the instruction
-// editor, so the cursor returns where the user left it.
+// editor, so the cursor, filter, and scroll position return where the user left
+// them.
 type settingsState struct {
-	title  string
-	single bool
-	action string
-	tabs   []settingsTab
-	active int
-	row    int
-	scroll int
+	page settingsPage
+
+	tabs     []settingsTab
+	active   int
+	sel      settingsTarget
+	seen     map[int]int
+	scroll   int
+	listRows int
+
+	filter string
 
 	editing bool
 	input   textinput.Model
 
 	notice string
 	err    string
+
+	// detail marks a drill-down panel: its builder owns the rows, so a rebuild
+	// leaves them alone, and esc returns through back when one is set.
+	detail bool
+	back   func(*Model) tea.Cmd
+	action string
 }
 
-func newSettingsState(m *Model) *settingsState {
-	return newSettingsPanel("Settings", m.buildSettingsTabs())
+// newPageState builds a top-level page panel.
+func newPageState(page settingsPage) *settingsState {
+	state := newSettingsPanel(page.Title, page.Tabs)
+	state.page = settingsPage{ID: page.ID, Title: page.Title, Mode: page.Mode}
+	state.action = "page-" + page.ID
+	state.detail = false
+	return state
 }
 
+// newSettingsPanel builds a drill-down panel: goal, statistics, context, a
+// provider or package detail, or the preset editor. Such a panel keeps the rows
+// it was built with.
 func newSettingsPanel(title string, tabs []settingsTab) *settingsState {
 	input := textinput.New()
 	input.Prompt = ""
 	input.CharLimit = 0
-	return &settingsState{
-		title:  title,
-		single: len(tabs) <= 1,
-		action: "settings",
+	state := &settingsState{
+		page:   settingsPage{Title: title, Mode: pageSections},
 		tabs:   tabs,
+		seen:   make(map[int]int),
 		input:  input,
+		detail: true,
+		action: "settings",
 	}
+	state.clampSelection()
+	return state
 }
 
-// rebuild refreshes the rows from disk while keeping the selected tab and row.
+// rebuild refreshes the rows from disk while keeping the current group and row.
 func (s *settingsState) rebuild(m *Model) {
-	if s.single {
-		// Sub-panels own their rows; rebuilding them from the main tab list
-		// would replace the panel under the user.
+	if s.detail || s.page.ID == "" {
 		return
 	}
-	tabID := ""
-	rowID := ""
-	if s.active >= 0 && s.active < len(s.tabs) {
-		tab := s.tabs[s.active]
-		tabID = tab.ID
-		if s.row >= 0 && s.row < len(tab.Rows) {
-			rowID = tab.Rows[s.row].ID
-		}
+	groupID, rowID := s.selectedIDs()
+	page := m.buildPage(s.page.ID)
+	if len(page.Tabs) == 0 {
+		return
 	}
-	s.tabs = m.buildSettingsTabs()
-	s.selectTab(tabID)
-	if rowID != "" {
-		for i, row := range s.currentTab().Rows {
-			if row.ID == rowID {
-				s.row = i
+	s.page = settingsPage{ID: page.ID, Title: page.Title, Mode: page.Mode}
+	s.tabs = page.Tabs
+	s.active = 0
+	s.sel = settingsTarget{}
+	if groupID != "" {
+		for i, tab := range s.tabs {
+			if tab.ID == groupID {
+				s.active = i
+				s.sel.group = i
 				break
 			}
 		}
 	}
-	s.clamp()
+	if rowID != "" && s.sel.group < len(s.tabs) {
+		for i, row := range s.tabs[s.sel.group].Rows {
+			if row.ID == rowID {
+				s.sel.row = i
+				break
+			}
+		}
+	}
+	s.clampSelection()
 }
 
-func (s *settingsState) currentTab() settingsTab {
-	if s.active < 0 || s.active >= len(s.tabs) {
-		if len(s.tabs) == 0 {
-			return settingsTab{}
-		}
-		s.active = 0
+// selectedIDs names the current group and row, so a rebuild can find them
+// again after the builders renumber the list.
+func (s *settingsState) selectedIDs() (string, string) {
+	if s.sel.group < 0 || s.sel.group >= len(s.tabs) {
+		return "", ""
 	}
-	return s.tabs[s.active]
+	tab := s.tabs[s.sel.group]
+	if s.sel.row < 0 || s.sel.row >= len(tab.Rows) {
+		return tab.ID, ""
+	}
+	return tab.ID, tab.Rows[s.sel.row].ID
+}
+
+// activeGroup is the group being browsed. While a filter is active it follows
+// the selected match, so the category bar never points at a different section
+// than the one under the cursor.
+func (s *settingsState) activeGroup() int {
+	if s.page.Mode != pageCategories {
+		return s.sel.group
+	}
+	if s.filterActive() && s.sel.group >= 0 && s.sel.group < len(s.tabs) {
+		return s.sel.group
+	}
+	if s.active < 0 || s.active >= len(s.tabs) {
+		return 0
+	}
+	return s.active
 }
 
 func (s *settingsState) currentRow() *settingsRow {
-	tab := s.currentTab()
-	if s.row < 0 || s.row >= len(tab.Rows) {
+	if s.sel.group < 0 || s.sel.group >= len(s.tabs) {
 		return nil
 	}
-	return &tab.Rows[s.row]
+	rows := s.tabs[s.sel.group].Rows
+	if s.sel.row < 0 || s.sel.row >= len(rows) {
+		return nil
+	}
+	return &rows[s.sel.row]
 }
 
+// currentGroup is the group the cursor is in.
+func (s *settingsState) currentGroup() settingsTab {
+	if s.sel.group < 0 || s.sel.group >= len(s.tabs) {
+		return settingsTab{}
+	}
+	return s.tabs[s.sel.group]
+}
+
+func (s *settingsState) clampSelection() {
+	if len(s.tabs) == 0 {
+		s.sel = settingsTarget{}
+		return
+	}
+	if s.page.Mode == pageCategories {
+		if s.active < 0 || s.active >= len(s.tabs) {
+			s.active = 0
+		}
+		s.sel.group = s.active
+	}
+	if s.sel.group < 0 || s.sel.group >= len(s.tabs) {
+		s.sel.group = 0
+	}
+	rows := s.tabs[s.sel.group].Rows
+	if s.sel.row < 0 || s.sel.row >= len(rows) {
+		s.sel.row = maxInt(0, len(rows)-1)
+	}
+}
+
+// selectTab moves the cursor to the first row of one category.
 func (s *settingsState) selectTab(id string) {
 	for i, tab := range s.tabs {
-		if tab.ID == id {
-			s.active = i
-			s.row = 0
-			s.scroll = 0
+		if tab.ID != id {
+			continue
+		}
+		s.active = i
+		s.sel = settingsTarget{group: i, row: s.seen[i]}
+		s.scroll = 0
+		s.clampSelection()
+		return
+	}
+	s.active = 0
+	s.sel = settingsTarget{row: s.seen[0]}
+	s.clampSelection()
+}
+
+// move walks the visible rows, wrapping at both ends.
+func (s *settingsState) move(delta int) {
+	targets := s.targets()
+	if len(targets) == 0 {
+		return
+	}
+	index := -1
+	for i, target := range targets {
+		if target == s.sel {
+			index = i
+			break
+		}
+	}
+	if index < 0 {
+		index = 0
+	} else {
+		index = (index + delta + len(targets)) % len(targets)
+	}
+	s.sel = targets[index]
+	s.seen[s.sel.group] = s.sel.row
+	s.err = ""
+	s.notice = ""
+}
+
+func (s *settingsState) moveFirst() {
+	targets := s.targets()
+	if len(targets) == 0 {
+		return
+	}
+	s.sel = targets[0]
+	s.seen[s.sel.group] = s.sel.row
+	s.scroll = 0
+}
+
+func (s *settingsState) moveLast() {
+	targets := s.targets()
+	if len(targets) == 0 {
+		return
+	}
+	s.sel = targets[len(targets)-1]
+	s.seen[s.sel.group] = s.sel.row
+	s.scroll = 0
+}
+
+// switchGroup changes category on the Settings page. A filter spans every
+// group, so switching would fight the result list and is ignored there.
+func (s *settingsState) switchGroup(delta int) {
+	if s.page.Mode != pageCategories || len(s.tabs) < 2 || s.filterActive() {
+		return
+	}
+	s.seen[s.sel.group] = s.sel.row
+	s.active = (s.active + delta + len(s.tabs)) % len(s.tabs)
+	s.sel = settingsTarget{group: s.active, row: s.seen[s.active]}
+	s.scroll = 0
+	s.err = ""
+	s.notice = ""
+	s.clampSelection()
+}
+
+// setFilter replaces the query and keeps the best match selected.
+func (s *settingsState) setFilter(value string) {
+	s.filter = value
+	s.scroll = 0
+	s.err = ""
+	s.notice = ""
+	if !s.filterActive() && s.page.Mode == pageCategories {
+		// Clearing the query returns the category bar to the row under the
+		// cursor instead of the category the search started from.
+		s.active = s.sel.group
+	}
+	targets := s.targets()
+	if len(targets) == 0 {
+		return
+	}
+	for _, target := range targets {
+		if target == s.sel {
 			return
 		}
 	}
-	s.active = 0
-	s.row = 0
+	s.sel = targets[0]
+}
+
+func (s *settingsState) clearFilter() {
+	s.filter = ""
+	s.scroll = 0
+	if s.page.Mode == pageCategories {
+		s.active = s.sel.group
+	}
+	s.clampSelection()
+}
+
+// jumpToSelection leaves the filter on the row the query found. Activating that
+// row takes a second enter, so a search cannot write a setting by accident.
+func (s *settingsState) jumpToSelection() {
+	s.filter = ""
+	if s.page.Mode == pageCategories {
+		s.active = s.sel.group
+	}
+	s.seen[s.sel.group] = s.sel.row
+	s.clampSelection()
 	s.scroll = 0
 }
 
-func (s *settingsState) clamp() {
-	tab := s.currentTab()
-	if s.row >= len(tab.Rows) {
-		s.row = maxInt(0, len(tab.Rows)-1)
-	}
-	if s.row < 0 {
-		s.row = 0
-	}
-}
-
-func (s *settingsState) move(delta int) {
-	tab := s.currentTab()
-	if len(tab.Rows) == 0 {
+func (s *settingsState) backspaceFilter() {
+	if s.filter == "" {
 		return
 	}
-	s.row = (s.row + delta + len(tab.Rows)) % len(tab.Rows)
-	s.err = ""
-	s.notice = ""
+	runes := []rune(s.filter)
+	s.setFilter(string(runes[:len(runes)-1]))
 }
 
-func (s *settingsState) switchTab(delta int) {
-	if len(s.tabs) == 0 {
+func (s *settingsState) deleteFilterWord() {
+	trimmed := strings.TrimRight(s.filter, " ")
+	index := strings.LastIndex(trimmed, " ")
+	if index < 0 {
+		s.setFilter("")
 		return
 	}
-	s.active = (s.active + delta + len(s.tabs)) % len(s.tabs)
-	s.row = 0
-	s.scroll = 0
-	s.err = ""
-	s.notice = ""
+	s.setFilter(strings.TrimRight(trimmed[:index], " "))
 }
 
-// padRight pads a styled string to width without counting escape codes.
-func padRight(s string, width int) string {
-	gap := width - lipglossWidth(s)
-	if gap <= 0 {
-		return truncateLine(s, width)
+func (s *settingsState) appendFilter(text string) {
+	var b strings.Builder
+	for _, r := range text {
+		switch {
+		case r == '\n' || r == '\r' || r == '\t':
+			b.WriteRune(' ')
+		case unicode.IsPrint(r):
+			b.WriteRune(r)
+		}
 	}
-	return s + strings.Repeat(" ", gap)
+	if b.Len() == 0 {
+		return
+	}
+	s.setFilter(s.filter + b.String())
 }
 
-// View renders the whole settings box.
-func (s *settingsState) View(st styles, width, height int) string {
-	boxWidth := width - 8
-	if boxWidth > 96 {
-		boxWidth = 96
+// padPlain pads a plain string to width without counting escape codes.
+func padPlain(s string, width int) string {
+	if gap := width - lipglossWidth(s); gap > 0 {
+		return s + strings.Repeat(" ", gap)
 	}
-	if boxWidth < 44 {
-		boxWidth = 44
-	}
-	railWidth := 18
-	innerWidth := boxWidth - 4
-	contentWidth := maxInt(12, innerWidth-railWidth-2)
-	if s.single {
-		railWidth = 0
-		contentWidth = maxInt(12, innerWidth)
-	} else if innerWidth < railWidth+12 {
-		railWidth = maxInt(10, innerWidth/3)
-		contentWidth = maxInt(12, innerWidth-railWidth-2)
-	}
-
-	rowsHeight := height - 8
-	if s.editing {
-		rowsHeight -= 2
-	}
-	if rowsHeight < 3 {
-		rowsHeight = 3
-	}
-	tab := s.currentTab()
-
-	if s.row < s.scroll {
-		s.scroll = s.row
-	}
-	if s.row >= s.scroll+rowsHeight {
-		s.scroll = s.row - rowsHeight + 1
-	}
-
-	// Left rail: one line per tab, padded to the rail width.
-	rail := make([]string, 0, rowsHeight)
-	if !s.single {
-		for i := 0; i < rowsHeight; i++ {
-			if i < len(s.tabs) {
-				entry := s.tabs[i]
-				prefix := "  "
-				if i == s.active {
-					prefix = "› "
-					rail = append(rail, padRight(st.pickerSel.Render(prefix+entry.Label), railWidth))
-				} else {
-					rail = append(rail, padRight(st.muted.Render(prefix+entry.Label), railWidth))
-				}
-				continue
-			}
-			rail = append(rail, strings.Repeat(" ", railWidth))
-		}
-	}
-
-	// Right pane: rows, then help and hints.
-	detail := make([]string, 0, rowsHeight)
-	for i := 0; i < rowsHeight; i++ {
-		index := s.scroll + i
-		if index >= len(tab.Rows) {
-			detail = append(detail, "")
-			continue
-		}
-		detail = append(detail, s.renderRow(st, tab.Rows[index], index == s.row, contentWidth))
-	}
-
-	lines := make([]string, 0, height)
-	titleText := s.title
-	if !s.single {
-		titleText += "  ·  " + tab.Label
-	}
-	title := st.overlayHead.Render(titleText)
-	lines = append(lines, padRight(title, innerWidth))
-	for i := 0; i < rowsHeight; i++ {
-		if s.single {
-			lines = append(lines, detail[i])
-			continue
-		}
-		lines = append(lines, rail[i]+"  "+detail[i])
-	}
-
-	help := tab.Note
-	if row := s.currentRow(); row != nil && row.Help != "" {
-		help = row.Help
-	}
-	lines = append(lines, "")
-	lines = append(lines, st.overlayHint.Render(truncateLine(help, innerWidth)))
-
-	if s.editing {
-		s.input.Width = maxInt(10, contentWidth-2)
-		lines = append(lines, "  "+s.input.View())
-	}
-
-	switch {
-	case s.err != "":
-		lines = append(lines, st.errorText.Render(truncateLine(s.err, innerWidth)))
-	case s.notice != "":
-		lines = append(lines, st.notice.Render(truncateLine(s.notice, innerWidth)))
-	case s.editing:
-		lines = append(lines, st.overlayHint.Render("enter save · esc cancel"))
-	case s.single:
-		lines = append(lines, st.overlayHint.Render("↑/↓ move · enter change · esc back"))
-	default:
-		lines = append(lines, st.overlayHint.Render("↑/↓ move · ←/→ tab · enter change · / search · r reload · esc close"))
-	}
-
-	box := st.overlayBox.Copy().Width(boxWidth).Render(strings.Join(lines, "\n"))
-	return box
+	return truncateLine(s, width)
 }
 
-func (s *settingsState) renderRow(st styles, row settingsRow, selected bool, width int) string {
-	label := row.Label
-	value := ""
-	labelStyle := st.pickerItem
-	valueStyle := st.muted
+// padBetween puts one styled string at the left and another at the right of a
+// line exactly width cells wide.
+func padBetween(left, right string, width int) string {
+	rightWidth := lipglossWidth(right)
+	if rightWidth >= width {
+		return truncateLine(right, width)
+	}
+	if leftWidth := lipglossWidth(left); leftWidth+rightWidth >= width {
+		left = truncateLine(left, maxInt(0, width-rightWidth-1))
+	}
+	gap := width - lipglossWidth(left) - rightWidth
+	if gap < 1 {
+		gap = 1
+	}
+	return left + strings.Repeat(" ", gap) + right
+}
+
+// rowValue is the plain value cell and whether the row opens something.
+func rowValue(row settingsRow) (string, bool) {
+	var value string
+	chevron := false
 	switch row.Kind {
 	case settingsInfo:
-		labelStyle = st.muted
 		if row.Current != nil {
 			value = row.Current()
 		}
 	case settingsToggle:
-		labelStyle = st.pickerItem
-		on := row.Bool != nil && row.Bool()
-		if on {
-			value = "on"
-			valueStyle = st.accent
-		} else {
-			value = "off"
+		value = "false"
+		if row.Bool != nil && row.Bool() {
+			value = "true"
 		}
 	case settingsChoice, settingsText:
 		if row.Current != nil {
@@ -318,35 +432,284 @@ func (s *settingsState) renderRow(st styles, row settingsRow, selected bool, wid
 		if value == "" {
 			value = "—"
 		}
+		chevron = true
 	case settingsAction:
 		if row.Current != nil {
 			value = row.Current()
-		} else {
-			value = "enter"
+		}
+		chevron = true
+	}
+	return oneLine(value), chevron
+}
+
+// oneLine collapses newlines and repeated spaces so a value, help text, or
+// error can never break the page's fixed line grid.
+func oneLine(text string) string {
+	return strings.Join(strings.Fields(text), " ")
+}
+
+// styledValue paints the value cell for an unselected row. value is already
+// truncated to the cell, so the row can never grow past the page width.
+func styledValue(st styles, row settingsRow, value string, chevron bool) string {
+	switch row.Kind {
+	case settingsInfo:
+		return st.muted.Render(value)
+	case settingsToggle:
+		if row.Bool != nil && row.Bool() {
+			return st.settingsOn.Render(value)
+		}
+		return st.settingsOff.Render(value)
+	default:
+		out := st.pickerItem.Render(value)
+		if chevron {
+			out += "  " + st.settingsChevron.Render("›")
+		}
+		return out
+	}
+}
+
+// View renders the page inside a box that fills the transcript area.
+func (s *settingsState) View(st styles, boxWidth, bodyHeight int) string {
+	textWidth := maxInt(20, boxWidth-4)
+	contentRows := maxInt(3, bodyHeight-4)
+
+	grouped := s.page.Mode == pageCategories && len(s.tabs) > 1
+	status := s.err != "" || s.notice != ""
+	fixed := 6 // title, rule, help, rule, filter, hints
+	if grouped {
+		fixed++
+	}
+	if status {
+		fixed++
+	}
+	listRows := contentRows - fixed
+	if listRows < 1 {
+		listRows = 1
+	}
+	s.listRows = listRows
+
+	lines := s.displayLines()
+
+	// Keep the selected row on screen, and never leave blank space above the
+	// list when the page shrank after a rebuild.
+	selectedIndex := -1
+	for i, line := range lines {
+		if line.kind == settingsLineRow && (settingsTarget{group: line.group, row: line.row}) == s.sel {
+			selectedIndex = i
+			break
+		}
+	}
+	if selectedIndex < 0 && len(lines) > 0 {
+		for i, line := range lines {
+			if line.kind == settingsLineRow {
+				selectedIndex = i
+				s.sel = settingsTarget{group: line.group, row: line.row}
+				s.seen[s.sel.group] = s.sel.row
+				break
+			}
+		}
+	}
+	if selectedIndex >= 0 {
+		if selectedIndex < s.scroll {
+			s.scroll = selectedIndex
+		}
+		if selectedIndex >= s.scroll+listRows {
+			s.scroll = selectedIndex - listRows + 1
+		}
+	}
+	if maxScroll := maxInt(0, len(lines)-listRows); s.scroll > maxScroll {
+		s.scroll = maxScroll
+	}
+	if s.scroll < 0 {
+		s.scroll = 0
+	}
+
+	out := make([]string, 0, contentRows)
+
+	titleRight := ""
+	if !s.detail {
+		if total := s.totalRows(); total > 0 {
+			titleRight = fmt.Sprintf("%d settings", total)
+		}
+	}
+	out = append(out, padBetween(st.overlayHead.Render(s.page.Title), st.overlayHint.Render(titleRight), textWidth))
+
+	if grouped {
+		parts := make([]string, 0, len(s.tabs))
+		for i, tab := range s.tabs {
+			if i == s.activeGroup() {
+				parts = append(parts, st.settingsTabOn.Render(tab.Label))
+				continue
+			}
+			parts = append(parts, st.settingsTabOff.Render(tab.Label))
+		}
+		out = append(out, truncateLine(strings.Join(parts, "   "), textWidth))
+	}
+
+	out = append(out, st.settingsRule.Render(strings.Repeat("─", textWidth)))
+
+	if len(lines) == 0 {
+		message := "no settings on this page"
+		if s.filterActive() {
+			message = "no settings match \"" + s.filter + "\""
+		}
+		for i := 0; i < listRows; i++ {
+			if i == 0 {
+				out = append(out, st.overlayHint.Render(truncateLine(message, textWidth)))
+				continue
+			}
+			out = append(out, "")
+		}
+	} else {
+		for i := 0; i < listRows; i++ {
+			index := s.scroll + i
+			if index >= len(lines) {
+				out = append(out, "")
+				continue
+			}
+			line := lines[index]
+			switch line.kind {
+			case settingsLineGap:
+				out = append(out, "")
+			case settingsLineSection:
+				out = append(out, st.settingsSection.Render(truncateLine("  "+s.tabs[line.group].Label, textWidth)))
+			case settingsLineRow:
+				selected := settingsTarget{group: line.group, row: line.row} == s.sel
+				out = append(out, s.renderRow(st, line, selected, textWidth))
+			}
 		}
 	}
 
-	if selected {
-		labelStyle = st.pickerSel
-	}
-	prefix := "  "
-	if selected {
-		prefix = "› "
+	help := s.pageHelp()
+	out = append(out, st.overlayHint.Render(truncateLine(help, textWidth)))
+
+	switch {
+	case s.err != "":
+		out = append(out, st.errorText.Render(truncateLine(oneLine(s.err), textWidth)))
+	case s.notice != "":
+		out = append(out, st.notice.Render(truncateLine(oneLine(s.notice), textWidth)))
 	}
 
-	labelWidth := minInt(30, maxInt(12, width/2))
-	labelText := truncateLine(prefix+label, labelWidth)
-	labelText = padRight(labelText, labelWidth)
-	available := width - labelWidth
-	valueText := truncateLine(value, available)
-	gap := available - lipglossWidth(valueText)
-	if gap > 0 {
-		valueText = strings.Repeat(" ", gap) + valueText
+	out = append(out, st.settingsRule.Render(strings.Repeat("─", textWidth)))
+	out = append(out, s.filterLine(st, textWidth))
+	out = append(out, st.overlayHint.Render(truncateLine(s.hints(), textWidth)))
+
+	if len(out) > contentRows {
+		out = out[:contentRows]
 	}
-	return labelStyle.Render(labelText) + valueStyle.Render(valueText)
+	for len(out) < contentRows {
+		out = append(out, "")
+	}
+
+	boxHeight := bodyHeight - 2
+	if boxHeight < 3 {
+		boxHeight = 3
+	}
+	return st.overlayBox.Copy().Width(boxWidth).Height(boxHeight).Render(strings.Join(out, "\n"))
 }
 
-// handleKey processes keys while the settings panel is open.
+func (s *settingsState) totalRows() int {
+	total := 0
+	for _, tab := range s.tabs {
+		total += len(tab.Rows)
+	}
+	return total
+}
+
+// pageHelp is the selected row's description, then its group's note.
+func (s *settingsState) pageHelp() string {
+	if row := s.currentRow(); row != nil && row.Help != "" {
+		return oneLine(row.Help)
+	}
+	if note := s.currentGroup().Note; note != "" {
+		return oneLine(note)
+	}
+	return ""
+}
+
+// filterLine is the query row: a prompt, the query or its placeholder, and the
+// match count once a query is active.
+func (s *settingsState) filterLine(st styles, width int) string {
+	count := ""
+	if s.filterActive() {
+		count = fmt.Sprintf("%d / %d", len(s.targets()), s.totalRows())
+	}
+	body := st.pickerItem.Render(s.filter) + st.editorCursor.Render(" ")
+	if s.filter == "" {
+		body = st.editorCursor.Render(" ") + st.editorPlaceholder.Render("type to filter settings")
+	}
+	return padBetween(st.settingsPrompt.Render("/")+" "+body, st.overlayHint.Render(count), width)
+}
+
+// hints describes only the keys that do something right now.
+func (s *settingsState) hints() string {
+	if s.editing {
+		return "enter save · esc cancel"
+	}
+	switch {
+	case s.filterActive():
+		return "enter jump to the setting · esc clear · ↑/↓ move"
+	case s.page.Mode == pageCategories && len(s.tabs) > 1:
+		return "enter change · tab category · esc close · ctrl+r reload"
+	case s.detail && s.back != nil:
+		return "enter change · esc back · ctrl+r reload"
+	default:
+		return "enter change · esc close · ctrl+r reload"
+	}
+}
+
+func (s *settingsState) renderRow(st styles, line settingsLine, selected bool, width int) string {
+	tab := s.tabs[line.group]
+	row := tab.Rows[line.row]
+
+	labelWidth := minInt(32, maxInt(14, width/2))
+	valueWidth := width - labelWidth
+	if valueWidth < 8 {
+		labelWidth = maxInt(8, width-8)
+		valueWidth = width - labelWidth
+	}
+
+	plainValue, chevron := rowValue(row)
+	suffix := 0
+	if chevron {
+		suffix = 3 // two spaces and the chevron
+	}
+	plainValue = truncateLine(plainValue, maxInt(0, valueWidth-suffix))
+
+	if selected && s.editing && row.Kind == settingsText {
+		label := st.pickerSel.Render(truncateLine("❯ "+row.Label, labelWidth))
+		s.input.Width = maxInt(8, valueWidth)
+		return truncateLine(label+padPlain("", labelWidth-lipglossWidth(label))+s.input.View(), width)
+	}
+
+	if selected {
+		left := padPlain(truncateLine("❯ "+row.Label, labelWidth), labelWidth)
+		value := plainValue
+		if chevron {
+			value += "  ›"
+		}
+		value = strings.Repeat(" ", maxInt(0, valueWidth-lipglossWidth(value))) + value
+		return st.settingsSel.Render(padPlain(left+value, width))
+	}
+
+	labelStyle := st.pickerItem
+	if row.Kind == settingsInfo {
+		labelStyle = st.muted
+	}
+	label := labelStyle.Render(truncateLine("  "+row.Label, labelWidth))
+	gap := labelWidth - lipglossWidth(label)
+	if gap < 0 {
+		gap = 0
+	}
+	value := styledValue(st, row, plainValue, chevron)
+	valueGap := valueWidth - lipglossWidth(value)
+	if valueGap < 0 {
+		valueGap = 0
+	}
+	return label + strings.Repeat(" ", gap) + strings.Repeat(" ", valueGap) + value
+}
+
+// handleSettingsKey routes keys while a settings page is open.
 func (m *Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	s := m.settingsPanel
 	if s == nil {
@@ -369,13 +732,11 @@ func (m *Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 					s.notice = "saved"
 				}
 			}
-			m.layout()
 			return m, nil
 		case "esc":
 			s.editing = false
 			s.input.Blur()
 			s.err = ""
-			m.layout()
 			return m, nil
 		case "ctrl+c":
 			return m, tea.Quit
@@ -385,67 +746,59 @@ func (m *Model) handleSettingsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	tab := s.currentTab()
 	switch key {
-	case "esc", "q":
-		if m.overlay.action == "preset-editor" {
-			m.presetDraft = nil
-			return m, m.openSettingsAt("tools")
+	case "esc":
+		if s.filterActive() {
+			s.clearFilter()
+			return m, nil
 		}
-		if m.overlay.action == "settings-panel" {
-			tabID := m.panelTab
-			if tabID == "" {
-				tabID = "models"
-			}
-			return m, m.openSettingsAt(tabID)
-		}
-		if m.overlay.action == "skill-detail" {
-			return m, m.openSettingsAt("skills")
-		}
-		if m.overlay.action == "package-detail" {
-			return m, m.openSettingsAt("plugins")
-		}
-		if m.overlay.action == "mcp-detail" {
-			return m, m.openSettingsAt("mcp")
+		if s.detail && s.back != nil {
+			return m, s.back(m)
 		}
 		m.closeOverlay()
 		return m, nil
 	case "ctrl+c":
 		return m, tea.Quit
-	case "up", "k":
+	case "up", "ctrl+p":
 		s.move(-1)
-		return m, nil
-	case "down", "j":
+	case "down", "ctrl+n":
 		s.move(1)
-		return m, nil
 	case "pgup":
-		s.move(-5)
-		return m, nil
+		s.move(-maxInt(1, s.listRows))
 	case "pgdown":
-		s.move(5)
-		return m, nil
-	case "home", "g":
-		s.row = 0
-		return m, nil
-	case "end", "G":
-		s.row = maxInt(0, len(tab.Rows)-1)
-		return m, nil
-	case "left", "shift+tab", "h":
-		s.switchTab(-1)
-		return m, nil
-	case "right", "tab", "l":
-		s.switchTab(1)
-		return m, nil
-	case "r":
+		s.move(maxInt(1, s.listRows))
+	case "home":
+		s.moveFirst()
+	case "end":
+		s.moveLast()
+	case "left", "shift+tab":
+		s.switchGroup(-1)
+	case "right", "tab":
+		s.switchGroup(1)
+	case "enter":
+		if s.filterActive() {
+			s.jumpToSelection()
+			return m, nil
+		}
+		return m.activateSettingsRow()
+	case "ctrl+r":
 		m.reloadConfig()
 		s.rebuild(m)
 		s.notice = "reloaded from disk"
-		return m, nil
-	case "enter", " ":
-		return m.activateSettingsRow()
-	case "/":
-		m.openSettingsSearch()
-		return m, nil
+	case "backspace":
+		s.backspaceFilter()
+	case "ctrl+w":
+		s.deleteFilterWord()
+	case "ctrl+u":
+		s.setFilter("")
+	default:
+		// Printable input belongs to the filter; every other key is a control
+		// key the panel either handled above or ignores.
+		if msg.Type == tea.KeyRunes && !msg.Alt {
+			s.appendFilter(string(msg.Runes))
+		} else if msg.Type == tea.KeySpace {
+			s.appendFilter(" ")
+		}
 	}
 	return m, nil
 }
@@ -485,7 +838,6 @@ func (m *Model) activateSettingsRow() (tea.Model, tea.Cmd) {
 		s.input.SetValue(value)
 		s.input.CursorEnd()
 		s.input.Focus()
-		m.layout()
 		return m, nil
 	case settingsChoice:
 		if len(row.Choices) == 0 || row.Apply == nil {
@@ -534,36 +886,6 @@ func (m *Model) applySettingChoice(value string) tea.Cmd {
 	return nil
 }
 
-// openSettings reloads the shared files and opens the panel.
-func (m *Model) openSettings() tea.Cmd {
-	m.reloadConfig()
-	// A single-tab panel (goal, a detail view) is not the settings home.
-	if m.settingsPanel != nil && m.settingsPanel.single {
-		m.settingsPanel = nil
-	}
-	m.panelProvider = ""
-	m.panelUsageProvider = ""
-	m.openSettingsOverlay()
-	return tea.Batch(m.loadEntries(), m.loadToolSnapshot())
-}
-
-func (m *Model) openSettingsOverlay() {
-	if m.settingsPanel == nil {
-		m.settingsPanel = newSettingsState(m)
-	} else if m.settingsPanel.single {
-		// A detail panel survives a round trip through a picker.
-		m.openOverlay(&overlay{kind: overlaySettings, action: m.settingsPanel.action, settings: m.settingsPanel})
-		return
-	} else {
-		m.settingsPanel.rebuild(m)
-	}
-	action := m.settingsPanel.action
-	if action == "" {
-		action = "settings"
-	}
-	m.openOverlay(&overlay{kind: overlaySettings, action: action, settings: m.settingsPanel})
-}
-
 // editGlobalInstructions opens the multi-line editor over the settings panel.
 func (m *Model) editGlobalInstructions(s *settingsState) tea.Cmd {
 	text, err := config.ReadInstructions(m.paths)
@@ -583,24 +905,85 @@ func (m *Model) editGlobalInstructions(s *settingsState) tea.Cmd {
 	return nil
 }
 
-// buildSettingsTabs assembles every tab. Tabs land in this list as their phase
-// is implemented; until then they explain what will appear.
-func (m *Model) buildSettingsTabs() []settingsTab {
-	return []settingsTab{
-		m.generalSettingsTab(),
-		m.instructionsSettingsTab(),
-		m.appearanceSettingsTab(),
-		m.modelsSettingsTab(),
-		m.providersSettingsTab(),
-		m.toolsSettingsTab(),
-		m.skillsSettingsTab(),
-		m.pluginsSettingsTab(),
-		m.mcpSettingsTab(),
-	}
-}
-
+// generalSettingsTab is the Settings home's first category. It absorbs the
+// appearance preferences a terminal can honour: theme, submit key, thinking
+// blocks, and tool-output expansion.
 func (m *Model) generalSettingsTab() settingsTab {
 	tab := settingsTab{ID: "general", Label: "General", Note: "Shared settings are written to pi's files immediately."}
+
+	if m.prefs != nil {
+		themeChoices := make([]pickerItem, 0, len(themeOptions))
+		for _, option := range themeOptions {
+			detail := option.Scheme
+			if detail == "" {
+				detail = "follows the terminal"
+			}
+			themeChoices = append(themeChoices, pickerItem{Value: option.ID, Label: option.Label, Detail: detail})
+		}
+		tab.Rows = append(tab.Rows,
+			settingsRow{
+				ID:    "theme",
+				Label: "Theme",
+				Help:  "Paint the transcript and chrome with pie's palette. Applies immediately.",
+				Kind:  settingsChoice,
+				Current: func() string {
+					return ThemeLabel(m.prefs.Theme())
+				},
+				Choices: themeChoices,
+				Apply: func(value string) error {
+					if err := m.prefs.SetTheme(value); err != nil {
+						return err
+					}
+					m.applyTheme(value)
+					return nil
+				},
+			},
+			settingsRow{
+				ID:    "enter-sends",
+				Label: "Enter sends",
+				Help:  "When off, enter inserts a newline and alt+enter sends.",
+				Kind:  settingsToggle,
+				Bool:  func() bool { return m.enterToSend },
+				SetBool: func(on bool) error {
+					if err := m.prefs.SetEnterToSend(on); err != nil {
+						return err
+					}
+					m.enterToSend = on
+					return nil
+				},
+			},
+			settingsRow{
+				ID:    "show-thinking",
+				Label: "Thinking blocks",
+				Help:  "Show reasoning blocks in the transcript (also ctrl+t).",
+				Kind:  settingsToggle,
+				Bool:  m.prefs.ShowThinking,
+				SetBool: func(on bool) error {
+					if err := m.prefs.SetShowThinking(on); err != nil {
+						return err
+					}
+					m.showThinking = on
+					m.applyThinkingVisibility()
+					return nil
+				},
+			},
+			settingsRow{
+				ID:    "expand-tools",
+				Label: "Expand tool output",
+				Help:  "Show every tool body in full; when off, long outputs fold (also ctrl+o).",
+				Kind:  settingsToggle,
+				Bool:  m.prefs.ExpandTools,
+				SetBool: func(on bool) error {
+					if err := m.prefs.SetExpandTools(on); err != nil {
+						return err
+					}
+					m.expanded = on
+					m.applyExpansion()
+					return nil
+				},
+			},
+		)
+	}
 
 	if m.settings == nil {
 		reason := "settings.json could not be read"
@@ -669,21 +1052,6 @@ func (m *Model) generalSettingsTab() settingsTab {
 
 	if m.prefs != nil {
 		tab.Rows = append(tab.Rows, settingsRow{
-			ID:    "show-thinking",
-			Label: "Thinking blocks",
-			Help:  "Show reasoning blocks in the transcript (also ctrl+t).",
-			Kind:  settingsToggle,
-			Bool:  m.prefs.ShowThinking,
-			SetBool: func(on bool) error {
-				if err := m.prefs.SetShowThinking(on); err != nil {
-					return err
-				}
-				m.showThinking = on
-				m.applyThinkingVisibility()
-				return nil
-			},
-		})
-		tab.Rows = append(tab.Rows, settingsRow{
 			ID:    "goal-enabled",
 			Label: "Goal controls",
 			Help:  "Requires the goal package: " + goalInstallHint + ". Install it, restart pie, then enable this.",
@@ -697,21 +1065,6 @@ func (m *Model) generalSettingsTab() settingsTab {
 					return err
 				}
 				m.goalEnabled = on
-				return nil
-			},
-		})
-		tab.Rows = append(tab.Rows, settingsRow{
-			ID:    "expand-tools",
-			Label: "Expand tool output",
-			Help:  "Show every tool body in full; when off, long outputs fold (also ctrl+o).",
-			Kind:  settingsToggle,
-			Bool:  m.prefs.ExpandTools,
-			SetBool: func(on bool) error {
-				if err := m.prefs.SetExpandTools(on); err != nil {
-					return err
-				}
-				m.expanded = on
-				m.applyExpansion()
 				return nil
 			},
 		})
@@ -769,82 +1122,10 @@ func (m *Model) instructionsSettingsTab() settingsTab {
 	return tab
 }
 
-func (m *Model) appearanceSettingsTab() settingsTab {
-	tab := settingsTab{
-		ID:    "appearance",
-		Label: "Appearance",
-		Note:  "Terminal font, size, and width follow your terminal; colors follow the theme.",
-	}
-	choices := make([]pickerItem, 0, len(themeOptions))
-	for _, option := range themeOptions {
-		detail := option.Scheme
-		if detail == "" {
-			detail = "follows the terminal"
-		}
-		choices = append(choices, pickerItem{Value: option.ID, Label: option.Label, Detail: detail})
-	}
-	current := "auto"
-	if m.prefs != nil {
-		current = m.prefs.Theme()
-	}
-	if m.prefs != nil {
-		tab.Rows = append(tab.Rows, settingsRow{
-			ID:    "enter-sends",
-			Label: "Enter sends",
-			Help:  "When off, enter inserts a newline and alt+enter sends.",
-			Kind:  settingsToggle,
-			Bool:  func() bool { return m.enterToSend },
-			SetBool: func(on bool) error {
-				if err := m.prefs.SetEnterToSend(on); err != nil {
-					return err
-				}
-				m.enterToSend = on
-				return nil
-			},
-		})
-	}
-	tab.Rows = append(tab.Rows, settingsRow{
-		ID:      "theme",
-		Label:   "Theme",
-		Help:    "Paint the transcript and chrome with pie's palette.",
-		Kind:    settingsChoice,
-		Current: func() string { return ThemeLabel(current) },
-		Choices: choices,
-		Apply: func(value string) error {
-			if m.prefs == nil {
-				return fmt.Errorf("preferences are unavailable")
-			}
-			if err := m.prefs.SetTheme(value); err != nil {
-				return err
-			}
-			current = value
-			m.applyTheme(value)
-			return nil
-		},
-	})
-	return tab
-}
-
 // applyTheme rebuilds the style set and pushes it into the cached renderers.
 func (m *Model) applyTheme(id string) {
 	m.styles = newStyles(themeFor(id))
 	m.transcript.SetStyles(m.styles)
 	m.composer.SetStyles(m.styles)
 	m.layout()
-}
-
-// openSettingsPanelAt opens a single-tab sub-panel that returns to tabID when
-// the user presses esc.
-func (m *Model) openSettingsPanelAt(tabID, title string, rows []settingsRow) {
-	state := newSettingsPanel(title, []settingsTab{{
-		ID:    "panel",
-		Label: title,
-		Rows:  rows,
-	}})
-	state.action = "settings-panel"
-	m.settingsPanel = state
-	m.panelTab = tabID
-	m.panelProvider = ""
-	m.panelUsageProvider = ""
-	m.openOverlay(&overlay{kind: overlaySettings, action: "settings-panel", settings: state})
 }

@@ -90,8 +90,7 @@ func (m *Model) showContextPanel() {
 	}
 	panel := newSettingsPanel("Context", []settingsTab{tab})
 	panel.action = "context"
-	m.settingsPanel = panel
-	m.openOverlay(&overlay{kind: overlaySettings, action: "context", settings: panel})
+	m.showPage(panel)
 }
 
 func (m *Model) viewText(name, text string) tea.Cmd {

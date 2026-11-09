@@ -198,8 +198,9 @@ func (m *Model) openMCPServer(server config.MCPServer, scope string) tea.Cmd {
 				}},
 			}
 			panel := newSettingsPanel("Server · "+server.Name, []settingsTab{tab})
-			m.settingsPanel = panel
-			m.openOverlay(&overlay{kind: overlaySettings, action: "mcp-detail", settings: panel})
+			panel.action = "mcp-detail"
+			panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("mcp") }
+			m.showPage(panel)
 			return nil
 		}
 	}
@@ -343,8 +344,9 @@ func (m *Model) openMCPServer(server config.MCPServer, scope string) tea.Cmd {
 		tab.Rows = append(rows, tab.Rows[4:]...)
 	}
 	panel := newSettingsPanel("MCP · "+server.Name, []settingsTab{tab})
-	m.settingsPanel = panel
-	m.openOverlay(&overlay{kind: overlaySettings, action: "mcp-detail", settings: panel})
+	panel.action = "mcp-detail"
+	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("mcp") }
+	m.showPage(panel)
 	return nil
 }
 

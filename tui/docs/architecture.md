@@ -88,6 +88,12 @@ storage; the resume-picker section below explains when it runs.
 - `palette.go` — the `ctrl+p` command launcher: client and pi commands ranked
   into the picker, run through the composer's dispatcher without touching the
   draft.
+- `pages.go` — the top-level pages behind `/settings`, `/models`, `/providers`,
+  `/skills`, `/mcp`, and `/plugins`, plus the return chain a drill-down panel
+  uses to go back.
+- `settings.go` / `settings_filter.go` — the shared page shell: title, category
+  bar, grouped rows, inline filter, row editors, and the `esc` ladder. One shell
+  serves the Settings categories and the domain pages.
 - `activity.go` — the live run status above the composer: phase, running tools,
   retry and compaction labels, the elapsed clock, the token estimate and t/s
   rate of the block being written, and the pulsing marker.

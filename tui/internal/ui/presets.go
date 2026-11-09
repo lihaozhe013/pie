@@ -745,22 +745,11 @@ func (m *Model) openPresetEditor(draft *presetDraft) {
 	}
 	state := newSettingsPanel(title, m.presetTabs(draft))
 	state.action = "preset-editor"
-	m.settingsPanel = state
-	m.openOverlay(&overlay{kind: overlaySettings, action: "preset-editor", settings: state})
-}
-
-// openSettingsAt rebuilds the main settings panel and selects a tab.
-func (m *Model) openSettingsAt(tabID string) tea.Cmd {
-	m.reloadConfig()
-	m.presetDraft = nil
-	m.settingsPanel = nil
-	m.panelProvider = ""
-	m.panelUsageProvider = ""
-	m.openSettingsOverlay()
-	if m.settingsPanel != nil {
-		m.settingsPanel.selectTab(tabID)
+	state.back = func(mm *Model) tea.Cmd {
+		mm.presetDraft = nil
+		return mm.openSettingsAt("tools")
 	}
-	return tea.Batch(m.loadEntries(), m.loadToolSnapshot())
+	m.showPage(state)
 }
 
 func (m *Model) savePresetDraft(draft *presetDraft) error {

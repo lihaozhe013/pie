@@ -1,7 +1,6 @@
 package ui
 
 import (
-	"sort"
 	"strings"
 	"unicode"
 )
@@ -101,38 +100,6 @@ func substringScore(query, text string) int {
 
 func isWordRune(r rune) bool {
 	return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_'
-}
-
-// fuzzyFilterItems filters and ranks picker rows. A term that appears in the
-// label always beats the same term found only in the keywords, then the fuzzy
-// score decides the order. Original order breaks ties.
-func fuzzyFilterItems(items []pickerItem, query string) []pickerItem {
-	terms := strings.Fields(strings.ToLower(strings.TrimSpace(query)))
-	if len(terms) == 0 {
-		return append([]pickerItem(nil), items...)
-	}
-
-	type ranked struct {
-		item  pickerItem
-		score int
-	}
-	matches := make([]ranked, 0, len(items))
-	for _, item := range items {
-		score, ok := fuzzyPickerScore(terms, item)
-		if !ok {
-			continue
-		}
-		matches = append(matches, ranked{item: item, score: score})
-	}
-	sort.SliceStable(matches, func(i, j int) bool {
-		return matches[i].score > matches[j].score
-	})
-
-	filtered := make([]pickerItem, len(matches))
-	for i, match := range matches {
-		filtered[i] = match.item
-	}
-	return filtered
 }
 
 func fuzzyPickerScore(terms []string, item pickerItem) (int, bool) {

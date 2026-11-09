@@ -301,8 +301,6 @@ type Model struct {
 	// panelUsageProvider is the provider whose usage panel is open, so a reply
 	// can repaint it without a second request.
 	panelUsageProvider string
-	// panelTab is the settings tab a single-panel sub-view returns to.
-	panelTab string
 	// providerUsage caches the last usage reply per provider.
 	providerUsage map[string]*usageSnapshot
 	// pendingAuthStep is a sign-in step that arrived while a dialog was open;
@@ -712,7 +710,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.reloadConfig()
 		m.setToast("pi reloaded settings and instructions")
-		if m.overlay != nil && m.overlay.action == "settings" {
+		if m.overlay != nil && m.overlay.kind == overlaySettings && m.settingsPanel != nil && !m.settingsPanel.detail {
 			m.openSettingsOverlay()
 		}
 		return m, tea.Batch(m.refreshState(), m.refreshCommands(), m.loadEntries(), m.loadToolSnapshot(), m.loadProviderAuth())
@@ -1254,6 +1252,16 @@ func (m *Model) View() string {
 func (m *Model) bodyLines() []string {
 	if m.overlay != nil {
 		box := strings.Split(m.overlay.View(m.styles), "\n")
+		if m.overlay.kind == overlaySettings {
+			// A page has a width cap, so center it on wide terminals instead of
+			// leaving a gap on the right.
+			frameWidth := m.frameWidth()
+			for i, line := range box {
+				if pad := (frameWidth - lipglossWidth(line)) / 2; pad > 0 {
+					box[i] = strings.Repeat(" ", pad) + line
+				}
+			}
+		}
 		top := (m.body - len(box)) / 2
 		if top < 0 {
 			top = 0

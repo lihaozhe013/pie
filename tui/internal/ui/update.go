@@ -17,8 +17,8 @@ import (
 	"github.com/lihaozhe013/pie/tui/internal/title"
 )
 
-// handleEvent folds one protocol event into the UI state.
-// settingsTabID resolves a slash argument to a Settings tab.
+// settingsTabID resolves a slash argument to a Settings category or a domain
+// page. Domain names redirect to their page so /settings models keeps working.
 func settingsTabID(name string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(name)) {
 	case "general":
@@ -26,19 +26,19 @@ func settingsTabID(name string) (string, bool) {
 	case "instructions", "agents", "prompt":
 		return "instructions", true
 	case "appearance", "theme":
-		return "appearance", true
-	case "models", "model":
-		return "models", true
-	case "providers", "provider":
-		return "providers", true
+		return "general", true
 	case "tools", "tool", "presets", "preset":
 		return "tools", true
+	case "models", "model":
+		return pageModels, true
+	case "providers", "provider":
+		return pageProviders, true
 	case "skills", "skill":
-		return "skills", true
+		return pageSkills, true
 	case "plugins", "plugin", "packages":
-		return "plugins", true
+		return pagePlugins, true
 	case "mcp":
-		return "mcp", true
+		return pageMCP, true
 	}
 	return "", false
 }
@@ -937,6 +937,13 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		return nil, false
 	}
 
+	// A page command must not shadow a pi command with the same name, such as
+	// an extension's own /mcp handler. The page stays reachable as /settings
+	// <name> in that case.
+	if isPageCommand(name) && m.piOwns(name) {
+		return nil, false
+	}
+
 	target, known := builtinIndex[name]
 	if !known || (target.alias && m.piOwns(name)) {
 		return nil, false
@@ -962,6 +969,16 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 			return m.setModelByLabel(argument), true
 		}
 		return m.openModelPicker(), true
+	case "/models":
+		return m.openPage(pageModels), true
+	case "/providers":
+		return m.openPage(pageProviders), true
+	case "/skills":
+		return m.openPage(pageSkills), true
+	case "/mcp":
+		return m.openPage(pageMCP), true
+	case "/plugins":
+		return m.openPage(pagePlugins), true
 	case "/login":
 		return m.openLoginPicker(argument), true
 	case "/logout":
@@ -2171,9 +2188,6 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 		case "logout":
 			m.closeOverlay()
 			return m.startProviderLogout(item.Value)
-		case "settings-jump":
-			m.closeOverlay()
-			return m.applySettingsJump(item.Value)
 		case "fork":
 			m.closeOverlay()
 			return m.forkSession(item.Value)

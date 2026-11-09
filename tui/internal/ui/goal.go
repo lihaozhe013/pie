@@ -19,8 +19,7 @@ func isGoalLogEntry(entry session.LogEntry) bool {
 // openGoalPanel shows the goal package's state and sends its /goal commands.
 // It never runs the continuation loop itself: the installed package owns it.
 func (m *Model) openGoalPanel() tea.Cmd {
-	m.settingsPanel = m.goalPanel()
-	m.openOverlay(&overlay{kind: overlaySettings, action: "goal", settings: m.settingsPanel})
+	m.showPage(m.goalPanel())
 	return nil
 }
 

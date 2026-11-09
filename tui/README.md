@@ -61,19 +61,23 @@ subagents, no second agent loop, no parallel protocol.
   launch starts where the last one ended
 - A command palette (`ctrl+p`) that searches and runs client or pi commands
   without clearing the composer draft
-- A settings panel (`/settings`) with the same configuration surfaces as the
-  Pie web UI and a fuzzy `/` search that jumps across every tab, sharing pi's
-  files: `settings.json`, `models.json`, `AGENTS.md`, and the `pie-*` companion
-  files in the agent directory
+- A settings page (`/settings`) that keeps client and pi preferences: theme,
+  submit key, thinking blocks, tool output, notices, session directory, and the
+  global `AGENTS.md` and tool presets. It shares pi's files with the web UI:
+  `settings.json`, `AGENTS.md`, and the `pie-*` companion files in the agent
+  directory. Types filter the page as you go, and `tab` switches category
+- Domain pages of their own: `/models`, `/providers`, `/skills`, `/mcp`, and
+  `/plugins` open full pages with the same interaction model, so managing one
+  kind of resource never means hunting through a settings tab
 - Tool presets (`/preset`): the built-in configured, plan, autonomous,
   chat-only, read-only, default, and full sets, plus custom presets stored in
   `pie-tool-presets.json` and editable from Settings › Tools. The last preset
   is remembered in the terminal-only preferences and reused for new sessions;
   a resumed session keeps its own recorded selection
-- A Models tab that merges pi's catalog with `models.json`: the
+- A Models page that merges pi's catalog with `models.json`: the
   context-window limit, startup model and thinking level, enabled-model
   patterns, per-model thinking levels, and per-model context windows
-- A Providers tab for credentials, endpoints, and subscription usage: default
+- A Providers page for credentials, endpoints, and subscription usage: default
   provider, `pi auth check` readiness, OAuth and API-key sign-in, custom
   provider and model editors (including compatibility endpoints, costs, and
   thinking maps), and usage windows and balances for providers that report
@@ -81,13 +85,13 @@ subagents, no second agent loop, no parallel protocol.
 - Code mode controls in Settings › Tools: automatic or always-on (writes
   `+codemode` to `defaultTools` minimally), the `codemode.mode` choice, and the
   inline result budget
-- A Skills tab that discovers the agent, project, settings, `~/.agents/skills`,
+- A Skills page that discovers the agent, project, settings, `~/.agents/skills`,
   and installed-package paths with
   pi's layout rules, shows model-invocation state, toggles
   `disable-model-invocation` in the frontmatter, opens the skill file in
   `$VISUAL`/`$EDITOR`, and searches or installs from skills.sh with the
   `npx skills` CLI
-- A Plugins tab that reads pi packages from `settings.json` and the project's
+- A Plugins page that reads pi packages from `settings.json` and the project's
   `.pi/settings.json`, installs globally or locally, updates one package or
   all, and enables or disables entries. Disabling keeps unknown keys and
   refuses filtered entries instead of silently dropping their filters
@@ -108,7 +112,7 @@ subagents, no second agent loop, no parallel protocol.
 - Branch tools: `/fork` lists forkable user messages and restores the chosen
   prompt to the editor, `/clone` duplicates the branch, and `/tree` prints the
   session tree with the current leaf marked
-- An Appearance toggle for whether Enter sends or inserts a newline
+- A General toggle for whether Enter sends or inserts a newline
   (alt+enter sends when Enter is a newline)
 - Session search from `/search [query]`: names, working directories, and
   transcript text across the session store, with a snippet and resume action
@@ -123,7 +127,7 @@ subagents, no second agent loop, no parallel protocol.
   `/resume` lists the current folder's sessions and offers "Show all
   directories" for the rest. Pressing `ctrl+d` twice on a row deletes that
   session and re-parents its forks, so cleanup does not need the Web UI
-- An MCP tab that lists the agent and project `mcp.json` servers, checks
+- An MCP page that lists the agent and project `mcp.json` servers, checks
   connections with `pi mcp list --json`, toggles `enabled`, sets the exposure
   mode, shows env and header names with values masked, adds servers through
   `pi mcp add`, and signs in, signs out, or removes through the same CLI
@@ -220,6 +224,19 @@ the fallback when `pie` runs locally.
 | `pgup` / `pgdn`, `ctrl+u` | scroll the transcript |
 | `shift+drag` | use the terminal's native selection |
 
+### Settings and domain pages
+
+| Key | Action |
+|---|---|
+| any printable character, `space` | filter the page; matches span every category |
+| `backspace`, `ctrl+w`, `ctrl+u` | delete a character, delete a word, clear the filter |
+| `up` / `down`, `ctrl+p` / `ctrl+n` | move between rows |
+| `pgup` / `pgdn`, `home` / `end` | move a page, jump to the first or last row |
+| `tab` / `shift+tab`, `left` / `right` | switch category on the Settings page |
+| `enter` | change a row; with a filter, first jump to the matched row |
+| `esc` | clear the filter, then go back one panel, then close |
+| `ctrl+r` | reread the shared files |
+
 ## Slash commands
 
 Each client-side command also answers to the aliases listed below, so muscle
@@ -227,9 +244,14 @@ memory from other CLIs keeps working.
 
 | Command | Aliases | Description |
 |---|---|---|
-| `/settings` | `/config`, `/prefs` | open the settings panel; `/settings models` opens a tab |
+| `/settings` | `/config`, `/prefs` | open the Settings page (General, Instructions, Tools); `/settings models` opens a domain page |
+| `/models` | | manage models, startup defaults, and context windows |
+| `/providers` | | manage provider credentials, endpoints, and usage |
+| `/skills` | | manage skills |
+| `/mcp` | | manage MCP servers |
+| `/plugins` | | manage Pi packages |
 | `/preset` | `/tools`, `/tool` | change the tool preset (`/preset plan`, `/preset configured`, or a custom name) |
-| `/model` | `/models` | switch model |
+| `/model` | | switch model |
 | `/login` | | sign in to a provider with OAuth or an API key |
 | `/logout` | | sign out of a provider and delete its stored credential |
 | `/think` | `/reasoning`, `/effort` | cycle the thinking level |

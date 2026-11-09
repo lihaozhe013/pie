@@ -111,6 +111,18 @@ type styles struct {
 	overlayHint       lipgloss.Style
 	pickerItem        lipgloss.Style
 	pickerSel         lipgloss.Style
+
+	// settingsSel paints a whole selected row, including its padding, so the
+	// cursor reads as one bar the way Claude Code's settings page does.
+	settingsSel     lipgloss.Style
+	settingsSection lipgloss.Style
+	settingsTabOn   lipgloss.Style
+	settingsTabOff  lipgloss.Style
+	settingsRule    lipgloss.Style
+	settingsPrompt  lipgloss.Style
+	settingsOn      lipgloss.Style
+	settingsOff     lipgloss.Style
+	settingsChevron lipgloss.Style
 	diffAdd           lipgloss.Style
 	diffDel           lipgloss.Style
 	diffMeta          lipgloss.Style
@@ -183,6 +195,24 @@ func newStyles(t theme) styles {
 		pickerSel: lipgloss.NewStyle().
 			Foreground(t.Accent).
 			Bold(true),
+		settingsSel: lipgloss.NewStyle().
+			Background(t.Accent).
+			Foreground(t.Panel),
+		settingsSection: lipgloss.NewStyle().
+			Foreground(t.Faint).
+			Bold(true),
+		settingsTabOn: lipgloss.NewStyle().
+			Foreground(t.Accent).
+			Bold(true).
+			Underline(true),
+		settingsTabOff: lipgloss.NewStyle().Foreground(t.Muted),
+		settingsRule:   lipgloss.NewStyle().Foreground(t.Border),
+		settingsPrompt: lipgloss.NewStyle().
+			Foreground(t.Accent).
+			Bold(true),
+		settingsOn:      lipgloss.NewStyle().Foreground(t.Success),
+		settingsOff:     lipgloss.NewStyle().Foreground(t.Muted),
+		settingsChevron: lipgloss.NewStyle().Foreground(t.Faint),
 		diffAdd:  lipgloss.NewStyle().Foreground(t.DiffAdd),
 		diffDel:  lipgloss.NewStyle().Foreground(t.DiffDel),
 		diffMeta: lipgloss.NewStyle().Foreground(t.Faint),

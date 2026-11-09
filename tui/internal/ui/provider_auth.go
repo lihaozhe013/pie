@@ -363,21 +363,18 @@ func (m *Model) openOverlayFromSettings(open func()) {
 	m.overlay.returnTo = previous
 }
 
-// refreshAuthPanels rebuilds an open Providers panel so it shows the
+// refreshAuthPanels rebuilds an open providers panel so it shows the
 // credential state a sign-in just changed.
 func (m *Model) refreshAuthPanels() {
-	if m.settingsPanel == nil || m.overlay == nil {
+	if m.settingsPanel == nil || m.overlay == nil || m.overlay.kind != overlaySettings {
 		return
 	}
-	switch m.overlay.action {
-	case "settings":
-		if !m.settingsPanel.single {
-			m.openSettingsOverlay()
-		}
-	case "settings-panel":
-		if m.panelProvider != "" {
-			m.openProviderPanel(m.panelProvider)
-		}
+	if m.overlay.action == "settings-panel" && m.panelProvider != "" {
+		m.openProviderPanel(m.panelProvider)
+		return
+	}
+	if !m.settingsPanel.detail {
+		m.openSettingsOverlay()
 	}
 }
 
