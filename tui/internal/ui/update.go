@@ -648,6 +648,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.submit()
 		}
 
+	case "alt+s", "ctrl+s":
+		if m.busy {
+			return m, m.submitSteer()
+		}
+		if !m.composer.Empty() {
+			m.setToast("steer is only available while a turn is running")
+		}
+		return m, nil
+
 	case "shift+tab":
 		return m, m.togglePlan()
 
@@ -836,6 +845,44 @@ func (m *Model) sendPrompt(text string) tea.Cmd {
 	}
 }
 
+// submitSteer sends the composer contents as a steering message for the running turn.
+func (m *Model) submitSteer() tea.Cmd {
+	text := strings.TrimSpace(m.composer.Value())
+	if text == "" || m.disconnected || m.fatal != "" {
+		return nil
+	}
+
+	m.composer.PushHistory(text)
+	m.composer.Reset()
+	m.completion.Hide()
+	m.layout()
+
+	if strings.HasPrefix(text, "/") {
+		if cmd, handled := m.runSlash(text); handled {
+			return cmd
+		}
+	}
+
+	userBlock := newBlock(blockUser, text)
+	m.transcript.Add(userBlock)
+	m.pendingPrompt = userBlock
+	m.pendingPromptText = text
+	m.followOutput()
+	return m.sendSteer(text)
+}
+
+func (m *Model) sendSteer(text string) tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), commandTimeout)
+		defer cancel()
+
+		command := rpc.Steer(text)
+		response, err := client.DoOK(ctx, command)
+		return responseMsg{action: "steer", resp: response, err: err}
+	}
+}
+
 // abort clears queued messages, restores them to the editor, then aborts.
 func (m *Model) abort() tea.Cmd {
 	client := m.client
@@ -1018,7 +1065,7 @@ func (m *Model) helpItems() []pickerItem {
 	bindings := [][2]string{
 		{"enter", "send prompt (queues a follow-up while running)"},
 		{"alt+enter / ctrl+j", "insert a newline"},
-		{"ctrl+s", "steer the running turn"},
+		{"alt+s", "steer the running turn"},
 		{"esc", "interrupt the running turn (queues are restored to the editor)"},
 		{"ctrl+c", "clear the prompt (up restores it); on an empty prompt, twice to quit"},
 		{"ctrl+d", "in the resume list, twice to delete the selected session"},
@@ -1643,11 +1690,21 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 			m.activity.reset()
 			m.layout()
 		}
+		if msg.action == "steer" {
+			m.pendingPrompt = nil
+			m.pendingPromptText = ""
+		}
 		return m, nil
 	}
 
 	response := msg.resp
 	switch msg.action {
+	case "steer":
+		m.pendingPrompt = nil
+		m.pendingPromptText = ""
+		m.setToast("steer message sent")
+		return m, nil
+
 	case "prompt":
 		var payload struct {
 			Disposition string `json:"disposition"`
@@ -2025,7 +2082,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.answerConfirm(false)
 		}
 
-	case "ctrl+s":
+	case "ctrl+s", "alt+s":
 		if o.kind == overlayEditor {
 			return m, m.answerInput(o.editor.Value())
 		}
