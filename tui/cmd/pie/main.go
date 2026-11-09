@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"syscall"
 	"time"
@@ -25,8 +26,44 @@ import (
 	"github.com/lihaozhe013/pie/tui/internal/ui"
 )
 
-// version is overridden at build time with -ldflags "-X main.version=...".
-var version = "dev"
+// version is the release line this client reports. It stays at 0.1.0 for
+// personal use; the commit is appended so two builds can be told apart. CI may
+// override it at build time with -ldflags "-X main.version=...".
+var version = "0.1.0"
+
+// appVersion is what help, logs, the window title, and the startup card show.
+var appVersion = withCommit(version)
+
+// commitLength is how many characters of the build's revision the version
+// carries, matching the web client (`0.1.0+1c02256`).
+const commitLength = 7
+
+// withCommit appends the build's Git revision as SemVer build metadata. A
+// version that already carries metadata is left alone, and a build outside a
+// Git checkout keeps the bare version.
+func withCommit(v string) string {
+	if strings.Contains(v, "+") {
+		return v
+	}
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		return v
+	}
+	for _, setting := range info.Settings {
+		if setting.Key != "vcs.revision" {
+			continue
+		}
+		revision := strings.TrimSpace(setting.Value)
+		if revision == "" {
+			return v
+		}
+		if len(revision) > commitLength {
+			revision = revision[:commitLength]
+		}
+		return v + "+" + revision
+	}
+	return v
+}
 
 const (
 	exitOK      = 0
@@ -66,7 +103,7 @@ func run(args []string, stderr io.Writer) int {
 		return exitMissing
 	}
 	if cfg.showVersion {
-		fmt.Fprintf(stderr, "pie %s\n", version)
+		fmt.Fprintf(stderr, "pie %s\n", appVersion)
 		return exitOK
 	}
 
@@ -134,7 +171,7 @@ func run(args []string, stderr io.Writer) int {
 	model := ui.New(client, ui.Options{
 		SessionDir: cfg.sessionDir,
 		CWD:        cwd,
-		Version:    version,
+		Version:    appVersion,
 		PiBin:      piBinary,
 		Restart:    restart,
 		Mouse:      !cfg.noMouse,
@@ -188,7 +225,7 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 	fs.BoolVar(&cfg.showVersion, "version", false, "print the version and exit")
 
 	fs.Usage = func() {
-		fmt.Fprintf(stderr, "pie %s - a thin terminal client for pi\n\n", version)
+		fmt.Fprintf(stderr, "pie %s - a thin terminal client for pi\n\n", appVersion)
 		fmt.Fprintf(stderr, "usage: pie [flags]\n\nflags:\n")
 		fs.PrintDefaults()
 	}
@@ -320,7 +357,7 @@ func newLogger(enabled bool, stderr io.Writer) (*debugLogger, func()) {
 		return &debugLogger{}, func() {}
 	}
 	logger := &debugLogger{file: file}
-	logger.logf("pie %s started", version)
+	logger.logf("pie %s started", appVersion)
 	fmt.Fprintf(stderr, "pie: logging to %s\n", path)
 	return logger, func() { _ = file.Close() }
 }
