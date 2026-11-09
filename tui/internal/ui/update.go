@@ -59,6 +59,11 @@ func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 		m.layout()
 		m.finishStream()
 		m.transcript.MarkDirty()
+		// The run is over, so a prompt echo that never arrived cannot match a
+		// later delivery. The text stays until the prompt response clears it so
+		// a late response can still name a new session.
+		m.pendingPrompt = nil
+		m.pendingPromptLabel = false
 		commands := []tea.Cmd{m.waitEvent(), m.refreshStats()}
 		if m.state.SessionName != "" {
 			m.autoTitlePending = false
@@ -74,9 +79,9 @@ func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(commands...)
 
 	case *rpc.MessageStartEvent:
-		// Assistant content arrives through updates; user messages are added
-		// locally when submitted, so nothing to do here. A new assistant message
-		// starts the activity row's estimate and token-rate anchor over.
+		// Assistant content arrives through updates. User messages are echoed
+		// when pi delivers queued steering or follow-ups; their blocks are
+		// added on message_end, after the text is authoritative.
 		if ev.Message.Role == "assistant" {
 			m.beginAssistantMessage()
 			m.activity.beginMessage()
@@ -325,7 +330,42 @@ func (m *Model) applyMessageEnd(message rpc.Message) {
 
 	case "toolResult":
 		m.applyToolResult(message)
+
+	case "user":
+		text := strings.TrimSpace(message.Text())
+		if text == "" {
+			return
+		}
+		// pi echoes the prompt that opened the run and every delivered steering
+		// or follow-up message as a user message. The opening prompt is already
+		// on screen optimistically, so consume its echo instead of drawing it
+		// twice; a delivered queued message has no block yet and joins here.
+		if optimistic := m.pendingPrompt; optimistic != nil {
+			blocks := m.transcript.Blocks()
+			if len(blocks) > 0 && blocks[len(blocks)-1] == optimistic {
+				m.pendingPrompt = nil
+				if !m.pendingPromptLabel && strings.TrimSpace(optimistic.text) != text {
+					// pi may expand a prompt template or skill before emitting
+					// the message; adopt the authoritative text. An image label
+					// is local presentation and keeps its own text.
+					optimistic.setText(text)
+					m.transcript.MarkDirty()
+				}
+				m.pendingPromptLabel = false
+				return
+			}
+		}
+		m.transcript.Add(newBlock(blockUser, text))
+		m.followOutput()
 	}
+}
+
+// clearPendingPrompt forgets the optimistic prompt state. A caller that takes
+// the block back from the transcript does that first.
+func (m *Model) clearPendingPrompt() {
+	m.pendingPrompt = nil
+	m.pendingPromptText = ""
+	m.pendingPromptLabel = false
 }
 
 func (m *Model) finishStream() {
@@ -825,11 +865,17 @@ func (m *Model) dispatchCommand(text string) tea.Cmd {
 		}
 		m.autoTitlePending = true
 	}
-	userBlock := newBlock(blockUser, text)
-	m.transcript.Add(userBlock)
-	m.pendingPrompt = userBlock
-	m.pendingPromptText = text
-	m.followOutput()
+	// A running turn stages this prompt in pi's queue. The queued panel above
+	// the composer owns it until pi delivers it; adding a transcript block now
+	// would make it look like the follow-up already joined the conversation.
+	if !m.busy {
+		userBlock := newBlock(blockUser, text)
+		m.transcript.Add(userBlock)
+		m.pendingPrompt = userBlock
+		m.pendingPromptLabel = false
+		m.pendingPromptText = text
+		m.followOutput()
+	}
 	return m.sendPrompt(text)
 }
 
@@ -845,7 +891,7 @@ func (m *Model) sendPrompt(text string) tea.Cmd {
 			command = rpc.FollowUp(text)
 		}
 		response, err := client.DoOK(ctx, command)
-		return responseMsg{action: "prompt", resp: response, err: err}
+		return responseMsg{action: "prompt", queued: queued, resp: response, err: err}
 	}
 }
 
@@ -867,11 +913,6 @@ func (m *Model) submitSteer() tea.Cmd {
 		}
 	}
 
-	userBlock := newBlock(blockUser, text)
-	m.transcript.Add(userBlock)
-	m.pendingPrompt = userBlock
-	m.pendingPromptText = text
-	m.followOutput()
 	return m.sendSteer(text)
 }
 
@@ -1086,7 +1127,7 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 
 func (m *Model) helpItems() []pickerItem {
 	bindings := [][2]string{
-		{"enter", "send prompt (queues a follow-up while running)"},
+		{"enter", "send prompt (stages a follow-up above the prompt while running)"},
 		{"alt+enter / ctrl+j", "insert a newline"},
 		{"alt+s", "steer the running turn"},
 		{"esc", "interrupt the running turn (queues are restored to the editor)"},
@@ -1708,14 +1749,10 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 			m.nameWatchName = ""
 		}
 		m.addError(msg.err.Error())
-		if msg.action == "prompt" {
+		if msg.action == "prompt" && !msg.queued {
 			m.busy = false
 			m.activity.reset()
 			m.layout()
-		}
-		if msg.action == "steer" {
-			m.pendingPrompt = nil
-			m.pendingPromptText = ""
 		}
 		return m, nil
 	}
@@ -1723,8 +1760,6 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 	response := msg.resp
 	switch msg.action {
 	case "steer":
-		m.pendingPrompt = nil
-		m.pendingPromptText = ""
 		m.setToast("steer message sent")
 		return m, nil
 
@@ -1736,7 +1771,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 			_ = response.DecodeData(&payload)
 		}
 		var titleCmd tea.Cmd
-		if payload.Disposition != "handled" && m.state.SessionName == "" && m.state.MessageCount == 0 &&
+		if !msg.queued && payload.Disposition != "handled" && m.state.SessionName == "" && m.state.MessageCount == 0 &&
 			!m.titleRunning && strings.TrimSpace(m.pendingPromptText) != "" {
 			// Name a brand-new session from the first accepted prompt instead
 			// of waiting for a long turn to settle.
@@ -1747,21 +1782,28 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		}
 		switch payload.Disposition {
 		case "queued":
-			m.pendingPrompt = nil
+			// A prompt sent as a new turn can still land in pi's queue when a
+			// run started while the request was in flight. Take back the
+			// optimistic block; message_end will add it when it is delivered.
+			if !msg.queued && m.pendingPrompt != nil {
+				m.removeBlock(m.pendingPrompt)
+				m.clearPendingPrompt()
+			}
 			m.setToast("message queued")
 		case "handled":
 			// An extension command is not conversation: take back the block the
 			// composer optimistically added.
-			if m.pendingPrompt != nil {
+			handledText := m.pendingPromptText
+			if !msg.queued && m.pendingPrompt != nil {
 				m.removeBlock(m.pendingPrompt)
-				m.pendingPrompt = nil
+				m.clearPendingPrompt()
 			}
-			if !strings.HasPrefix(m.pendingPromptText, "/pie-") {
+			if !strings.HasPrefix(handledText, "/pie-") {
 				m.setToast("handled by pi")
 			}
-			m.pendingPromptText = ""
-		default:
-			m.pendingPrompt = nil
+		}
+		if !msg.queued {
+			// The block itself now carries the echo match.
 			m.pendingPromptText = ""
 		}
 		return m, titleCmd
@@ -1800,6 +1842,8 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.resetPresetRestore()
 		m.sessionEpoch.Add(1)
 		m.invalidateStats()
+		m.clearPendingPrompt()
+		m.queue = rpc.QueueUpdateEvent{}
 		m.transcript.Clear()
 		m.autoTitlePending = false
 		m.autoTitleAttempts = 0
@@ -1823,6 +1867,8 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.resetPresetRestore()
 		m.sessionEpoch.Add(1)
 		m.invalidateStats()
+		m.clearPendingPrompt()
+		m.queue = rpc.QueueUpdateEvent{}
 		m.transcript.Clear()
 		m.autoTitlePending = false
 		m.autoTitleAttempts = 0

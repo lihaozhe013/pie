@@ -68,9 +68,13 @@ func (m *Model) sendImage(argument string) tea.Cmd {
 	if text := strings.TrimSpace(prompt); text != "" && text != "Describe this image." {
 		label += "\n" + text
 	}
-	m.transcript.Add(newBlock(blockUser, label))
+	userBlock := newBlock(blockUser, label)
+	m.transcript.Add(userBlock)
+	// pi echoes the prompt as a user message; the label stands in for it and
+	// must not be drawn a second time or replaced by the bare prompt text.
+	m.pendingPrompt = userBlock
+	m.pendingPromptLabel = true
 	m.transcript.ScrollToBottom()
-
 	image := rpc.Image{
 		Type:     "image",
 		Data:     base64.StdEncoding.EncodeToString(data),

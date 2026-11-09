@@ -119,6 +119,7 @@ type (
 		action string
 		level  string
 		levels []string
+		queued bool
 		resp   *rpc.Response
 		err    error
 	}
@@ -310,10 +311,16 @@ type Model struct {
 	// provider's first model when the session has none yet.
 	pendingModelPick string
 
-	// pendingPrompt is the optimistic user block for the prompt in flight, so
-	// a command handled by an extension can take it back.
+	// pendingPrompt is the optimistic user block for the prompt in flight. It is
+	// consumed by the user message_end echo (which may replace its text with an
+	// expanded prompt template) or taken back when an extension handles the
+	// command.
 	pendingPrompt     *block
 	pendingPromptText string
+	// pendingPromptLabel marks the pending block as a display-only placeholder
+	// (an image attachment) whose text the delivered user message must not
+	// replace.
+	pendingPromptLabel bool
 	// autoTitlePending asks the next settled turn to name an unnamed session.
 	autoTitlePending bool
 	// titleRunning prevents overlapping manual or automatic title requests.
@@ -1162,7 +1169,7 @@ func (m *Model) commandItems() []completionItem {
 // layout recomputes pane sizes from the terminal size and editor height.
 //
 // The frame is exactly height lines: body + 1 status + an optional activity
-// row + editor box + hint.
+// row + optional queued rows + editor box + hint.
 func (m *Model) layout() {
 	if m.width == 0 || m.height == 0 {
 		return
@@ -1175,7 +1182,7 @@ func (m *Model) layout() {
 	// On a very short terminal, shrink the editor instead of letting the frame
 	// clip its bottom border. While a question waits, the answer field gives up
 	// rows first so the options stay on screen.
-	composerRows := m.height - 5 - m.activityRows()
+	composerRows := m.height - 5 - m.activityRows() - m.queueRows()
 	if m.ask != nil {
 		composerRows = minInt(composerRows, 3)
 	}
@@ -1190,7 +1197,7 @@ func (m *Model) layout() {
 	if m.completion.visible && m.overlay == nil && m.ask == nil {
 		completion = minInt(len(m.completion.filtered), 6) + 2
 	}
-	body := m.height - 1 - m.activityRows() - editor - completion
+	body := m.height - 1 - m.activityRows() - m.queueRows() - editor - completion
 	if body < 1 {
 		body = 1
 	}
@@ -1236,6 +1243,9 @@ func (m *Model) View() string {
 	}
 	if len(lines) < m.height {
 		lines = append(lines, m.renderStatus())
+	}
+	if m.queueRows() > 0 && len(lines) < m.height {
+		lines = append(lines, m.renderQueue()...)
 	}
 	if m.completion.visible && m.overlay == nil && m.ask == nil && len(lines) < m.height {
 		lines = append(lines, strings.Split(m.renderCompletion(), "\n")...)
@@ -1333,10 +1343,6 @@ func (m *Model) renderStatus() string {
 		left = append(left, m.styles.errorText.Render(m.fatal))
 	} else if m.disconnected {
 		left = append(left, m.styles.errorText.Render("pi disconnected · ctrl+c to exit"))
-	}
-
-	if queued := len(m.queue.Steering) + len(m.queue.FollowUp); queued > 0 {
-		left = append(left, m.styles.notice.Render(fmt.Sprintf("%d queued", queued)))
 	}
 
 	keys := make([]string, 0, len(m.statuses))

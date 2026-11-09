@@ -198,6 +198,7 @@ func (m *Model) applyProjectSwitch(msg projectSwitchedMsg) (tea.Model, tea.Cmd) 
 	m.transcript.Clear()
 	m.state = rpc.State{}
 	m.queue = rpc.QueueUpdateEvent{}
+	m.clearPendingPrompt()
 	m.stats = rpc.SessionStats{}
 	m.invalidateStats()
 	m.busy = false

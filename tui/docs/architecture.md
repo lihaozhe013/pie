@@ -97,6 +97,9 @@ storage; the resume-picker section below explains when it runs.
 - `activity.go` — the live run status above the composer: phase, running tools,
   retry and compaction labels, the elapsed clock, the token estimate and t/s
   rate of the block being written, and the pulsing marker.
+- `queue.go` — the staged follow-up and steering panel above the composer. It
+  renders pi's `queue_update` lists and caps them to a few preview rows so a
+  long queue cannot crowd out the transcript.
 - `viewport.go` — transcript blocks, scrolling, incremental markdown, and the
   rendered-content cache used by mouse selection. Tool cards are bounded
   previews by default: a running tool streams a short live tail of its newest
@@ -184,6 +187,16 @@ selection, and `/mouse` toggles capture at runtime; `--no-mouse` starts with
 capture off. Copying uses OSC52 for terminals and SSH sessions plus a platform
 command (`pbcopy`, `wl-copy`, `xclip`, `xsel`, or `clip`) for terminals without
 OSC52 support.
+
+### Queued follow-ups and steering
+
+`enter` during a run sends `follow_up`; `alt+s` sends `steer`. Both commands
+queue the text in pi instead of adding it to the transcript, and the panel above
+the composer renders pi's `queue_update` lists. The client adds the user block
+only when pi delivers the message as a user `message_start` / `message_end`
+pair, so a staged message joins the conversation at delivery rather than when it
+was typed. The prompt that opens a run is added optimistically; its echo is
+consumed, or replaces the optimistic text when pi expanded a prompt template.
 
 ### Rendering budget
 

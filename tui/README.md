@@ -57,7 +57,8 @@ subagents, no second agent loop, no parallel protocol.
 - Tool calls rendered as compact lines; shell commands and `edit`/`write`
   diffs are syntax-highlighted from the tool's file type, with added and
   removed diff rows tinted green and red
-- Thinking blocks (toggle with `ctrl+t`), follow-up queueing, steering, and abort
+- Thinking blocks (toggle with `ctrl+t`), a staged queue above the prompt for
+  follow-ups and steering, and abort
 - Model picker, thinking-level cycling, session rename/resume/new, compaction,
   HTML export, and token/context statistics. The chosen model is saved to pi's
   startup defaults and each thinking level is saved per model, so the next
@@ -206,7 +207,7 @@ terminal lacks bracketed paste.
 
 | Key | Action |
 |---|---|
-| `enter` | send the prompt (queues a follow-up while a turn is running) |
+| `enter` | send the prompt (stages a follow-up above the prompt while a turn is running) |
 | `alt+enter`, `ctrl+j`, `\` then `enter` | insert a newline |
 | `alt+s` | steer the running turn |
 | `esc` | interrupt the running turn (queues are restored to the editor) |
@@ -232,6 +233,11 @@ terminal lacks bracketed paste.
 | `ctrl+w`, `alt+backspace` | delete the previous word |
 | `pgup` / `pgdn`, `ctrl+u` | scroll the transcript |
 | `shift+drag` | use the terminal's native selection |
+
+While a turn runs, `enter` stages a follow-up and `alt+s` stages a steering
+message in the queue above the prompt. The transcript gains the message only
+when pi actually delivers it, so a queued steer never looks like it already
+joined the conversation.
 
 ### Settings and domain pages
 
