@@ -826,7 +826,7 @@ export const enLocale: LocalePlugin = {
     'activity.listing': 'Listing…',
     'activity.listingPath': 'Listing {path}',
     'activity.listingCount': 'Listing {count} directories',
-    'activity.runningCommand': 'Running {command}',
+    'activity.runningCommand': 'Running command…',
     'activity.runningCommands': 'Running {count} commands',
     'activity.waitingProvider': 'Waiting for provider…',
     'activity.tokenEstimate': '~{tokens} tokens',

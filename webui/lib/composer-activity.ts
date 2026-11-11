@@ -58,7 +58,7 @@ export function composerActivityLabel(
   const drafting = lastStreamedToolCall(streaming);
   if (drafting !== null) return t('activity.preparingTool', { name: drafting });
   if (phase?.kind === 'waiting_model') return t('activity.waitingProvider');
-  if (phase?.kind === 'running_command') return t('chat.runningCommand');
+  if (phase?.kind === 'running_command') return t('activity.runningCommand');
   if (streaming?.content.at(-1)?.type === 'thinking') return t('activity.thinking');
   return null;
 }
@@ -223,7 +223,7 @@ function collectToolInputs(
 /**
  * The status line stays a single fixed-height row, so concurrent calls are grouped
  * by kind instead of growing the line count. A group of one keeps its concrete
- * detail (path, pattern, command, tool name); a group of several becomes a count.
+ * detail (path, pattern, tool name); a group of several becomes a count.
  */
 function summarizeRunningTools(
   tools: RunningTool[],
@@ -239,7 +239,7 @@ function summarizeRunningTools(
     if (isSearchToolName(tool.name)) searches.push(searchLabel(tool, inputs.get(tool.id), t));
     else if (isListToolName(tool.name)) listings.push(listingLabel(tool, inputs.get(tool.id), t));
     else if (isExplorationToolName(tool.name)) reads.push(readLabel(tool, inputs.get(tool.id), t));
-    else if (isShellToolName(tool.name)) shells.push(shellLabel(tool, inputs.get(tool.id), t));
+    else if (isShellToolName(tool.name)) shells.push(shellLabel(t));
     else others.push(tool.name);
   }
 
@@ -286,11 +286,8 @@ function listingLabel(tool: RunningTool, input: ToolInput, t: Translate): string
     : t('activity.listing');
 }
 
-function shellLabel(tool: RunningTool, input: ToolInput, t: Translate): string {
-  const command = input?.command ?? input?.cmd;
-  if (typeof command !== 'string' || !command.trim())
-    return t('chat.runningNamedTool', { name: tool.name });
-  return t('activity.runningCommand', { command: command.trim().replace(/\s+/g, ' ') });
+function shellLabel(t: Translate): string {
+  return t('activity.runningCommand');
 }
 
 function otherToolsLabel(names: string[], t: Translate): string {

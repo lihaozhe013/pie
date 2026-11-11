@@ -802,7 +802,7 @@ export const zhCNLocale: LocalePlugin = {
     'activity.listing': '正在列出…',
     'activity.listingPath': '正在列出 {path}',
     'activity.listingCount': '正在列出 {count} 个目录',
-    'activity.runningCommand': '正在运行 {command}',
+    'activity.runningCommand': '正在运行命令…',
     'activity.runningCommands': '正在运行 {count} 条命令',
     'activity.waitingProvider': '正在等待模型服务响应…',
     'activity.tokenEstimate': '~{tokens} Token',

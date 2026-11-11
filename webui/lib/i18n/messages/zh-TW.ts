@@ -803,7 +803,7 @@ export const zhTWLocale: LocalePlugin = {
     'activity.listing': '正在列出…',
     'activity.listingPath': '正在列出 {path}',
     'activity.listingCount': '正在列出 {count} 個目錄',
-    'activity.runningCommand': '正在執行 {command}',
+    'activity.runningCommand': '正在執行命令…',
     'activity.runningCommands': '正在執行 {count} 條命令',
     'activity.waitingProvider': '正在等待模型服務回應…',
     'activity.tokenEstimate': '~{tokens} Token',

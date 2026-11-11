@@ -555,7 +555,7 @@ func activityOthersLabel(tools []activityTool) string {
 }
 
 // activityToolLabel is one concrete call's label: a group of one keeps its
-// detail (path, pattern, command), exactly like the GUI.
+// detail (path, pattern), exactly like the GUI.
 func activityToolLabel(tool activityTool) string {
 	switch activityToolKindOf(tool.name) {
 	case activityToolRead:
@@ -578,10 +578,7 @@ func activityToolLabel(tool activityTool) string {
 		}
 		return "Listing…"
 	case activityToolShell:
-		if command := activityArg(tool.args, "command", "cmd"); command != "" {
-			return "Running " + strings.Join(strings.Fields(command), " ")
-		}
-		return "Running " + tool.name + "..."
+		return "Running command…"
 	}
 	return "Running " + tool.name + "..."
 }
