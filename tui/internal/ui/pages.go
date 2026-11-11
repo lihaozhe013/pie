@@ -25,10 +25,14 @@ func isPageID(id string) bool {
 	return false
 }
 
+// manageModelsValue is the model picker's route to the Model settings page,
+// where models are enabled or disabled.
+const manageModelsValue = "\x00model-settings"
+
 // isPageCommand reports whether a slash command opens a domain page.
 func isPageCommand(name string) bool {
 	switch name {
-	case "/models", "/providers", "/skills", "/mcp", "/plugins":
+	case "/model-settings", "/providers", "/skills", "/mcp", "/plugins":
 		return true
 	}
 	return false
@@ -38,7 +42,7 @@ func isPageCommand(name string) bool {
 func (m *Model) buildPage(id string) settingsPage {
 	switch id {
 	case pageModels:
-		return settingsPage{ID: id, Title: "Models", Mode: pageSections, Tabs: m.modelsSettingsTabs()}
+		return settingsPage{ID: id, Title: "Model settings", Mode: pageSections, Tabs: m.modelsSettingsTabs()}
 	case pageProviders:
 		return settingsPage{ID: id, Title: "Providers", Mode: pageSections, Tabs: []settingsTab{m.providersSettingsTab()}}
 	case pageSkills:

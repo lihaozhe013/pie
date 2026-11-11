@@ -27,7 +27,7 @@ func settingsTabID(name string) (string, bool) {
 		return "instructions", true
 	case "tools", "tool", "presets", "preset":
 		return "tools", true
-	case "models", "model":
+	case "model-settings", "models", "model":
 		return pageModels, true
 	case "providers", "provider":
 		return pageProviders, true
@@ -1030,7 +1030,7 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 			return m.setModelByLabel(argument), true
 		}
 		return m.openModelPicker(), true
-	case "/models":
+	case "/model-settings":
 		return m.openPage(pageModels), true
 	case "/providers":
 		return m.openPage(pageProviders), true
@@ -1273,7 +1273,7 @@ func (m *Model) openModelPicker() tea.Cmd {
 		m.setToast("no models reported by pi")
 		return nil
 	}
-	items := make([]pickerItem, 0, len(m.models))
+	items := make([]pickerItem, 0, len(m.models)+1)
 	for _, model := range m.models {
 		if !m.modelEnabled(model) {
 			continue
@@ -1287,11 +1287,18 @@ func (m *Model) openModelPicker() tea.Cmd {
 		}
 		items = append(items, pickerItem{Value: model.Label(), Label: model.Label(), Detail: detail})
 	}
+	// Disabled models are invisible here, so the picker always carries the way
+	// to enable them; without it a user would have to know the page's command.
+	title := "Switch model"
 	if len(items) == 0 {
-		m.setToast("every model is disabled; enable one in settings")
-		return nil
+		title = "No enabled models"
 	}
-	m.openOverlay(newPickerOverlay("model", "Switch model", items))
+	items = append(items, pickerItem{
+		Value:  manageModelsValue,
+		Label:  "Manage models…",
+		Detail: "enable or disable models, defaults, and the catalog",
+	})
+	m.openOverlay(newPickerOverlay("model", title, items))
 	return nil
 }
 
@@ -2212,6 +2219,9 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 		switch action {
 		case "model":
 			m.closeOverlay()
+			if item.Value == manageModelsValue {
+				return m.openPage(pageModels)
+			}
 			return m.setModelByLabel(item.Value)
 		case "session":
 			if item.Value == sessionAllValue {

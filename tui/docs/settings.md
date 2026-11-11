@@ -7,15 +7,15 @@ The pages share one interaction model, so learning one teaches the rest.
 | Command | Page | Owns |
 | --- | --- | --- |
 | `/settings` (`/config`, `/prefs`) | Settings | General, Instructions, Tools |
-| `/models` | Models | Startup model and thinking level, enabled models, context windows, catalog |
+| `/model-settings` | Model settings | Startup model and thinking level, enabled models, context windows, catalog |
 | `/providers` | Providers | Credentials, sign-in, compatible endpoints, usage limits |
 | `/skills` | Skills | Discovery, install, frontmatter toggles |
 | `/mcp` | MCP | Servers, transports, connection checks |
 | `/plugins` | Plugins | Pi packages |
 
 `/settings models`, `/settings providers`, `/settings skills`, `/settings mcp`,
-and `/settings plugins` redirect to the matching page. `/model`
-remains the quick model picker; `/models` is the page.
+and `/settings plugins` redirect to the matching page. `/model` remains the
+quick model picker; `/model-settings` is the page where models are enabled.
 
 If pi advertises a command with the same name, pi's command wins, so an
 extension's own `/mcp` handler is never shadowed. The page stays reachable as
@@ -96,10 +96,11 @@ file without a restart; otherwise the change applies to the next pi run.
 - PowerShell tool (Windows only) swaps `powershell` for `bash` in the resolved
   tool list.
 
-## Models
+## Model settings
 
-The Models page owns model selection and metadata. It shares `models.json`,
-`settings.json`, `models-store.json`, and `pie-model-settings.json` with Pie:
+The Model settings page owns model selection and metadata. It shares
+`models.json`, `settings.json`, `models-store.json`, and
+`pie-model-settings.json` with Pie:
 
 - Defaults: the startup model and thinking level. Picking a model in the TUI
   writes `defaultProvider` and `defaultModel`, and every thinking-level change

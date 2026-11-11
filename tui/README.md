@@ -70,15 +70,15 @@ subagents, no second agent loop, no parallel protocol.
   global `AGENTS.md` and tool presets. It shares pi's files with the web UI:
   `settings.json`, `AGENTS.md`, and the `pie-*` companion files in the agent
   directory. Types filter the page as you go, and `tab` switches category
-- Domain pages of their own: `/models`, `/providers`, `/skills`, `/mcp`, and
-  `/plugins` open full pages with the same interaction model, so managing one
-  kind of resource never means hunting through a settings tab
+- Domain pages of their own: `/model-settings`, `/providers`, `/skills`, `/mcp`,
+  and `/plugins` open full pages with the same interaction model, so managing
+  one kind of resource never means hunting through a settings tab
 - Tool presets (`/preset`): the built-in configured, plan, autonomous,
   chat-only, read-only, default, and full sets, plus custom presets stored in
   `pie-tool-presets.json` and editable from Settings › Tools. The last preset
   is remembered in the terminal-only preferences and reused for new sessions;
   a resumed session keeps its own recorded selection
-- A Models page that merges pi's catalog with `models.json`: the
+- A Model settings page that merges pi's catalog with `models.json`: the
   context-window limit, startup model and thinking level, enabled-model
   patterns, per-model thinking levels, and per-model context windows
 - A Providers page for credentials, endpoints, and subscription usage: default
@@ -263,7 +263,7 @@ memory from other CLIs keeps working.
 | Command | Aliases | Description |
 |---|---|---|
 | `/settings` | `/config`, `/prefs` | open the Settings page (General, Instructions, Tools); `/settings models` opens a domain page |
-| `/models` | | manage models, startup defaults, and context windows |
+| `/model-settings` | | enable models, set startup defaults, and manage context windows and the catalog |
 | `/providers` | | manage provider credentials, endpoints, and usage |
 | `/skills` | | manage skills |
 | `/mcp` | | manage MCP servers |

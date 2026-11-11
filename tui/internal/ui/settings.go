@@ -39,7 +39,7 @@ type settingsRow struct {
 }
 
 // settingsTab is one group of rows: a category on the Settings page, or a
-// section on a domain page such as Models.
+// section on a domain page such as Model settings.
 type settingsTab struct {
 	ID    string
 	Label string
@@ -55,7 +55,7 @@ const (
 	// time and the filter spans every group.
 	pageCategories settingsPageMode = iota
 	// pageSections stacks every group under its own heading, the way a domain
-	// page such as Models reads.
+	// page such as Model settings reads.
 	pageSections
 )
 

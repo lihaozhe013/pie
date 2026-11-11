@@ -20,7 +20,7 @@ type catalogRefreshedMsg struct {
 	output string
 }
 
-// modelsSettingsTabs builds the Models page. It owns model selection,
+// modelsSettingsTabs builds the Model settings page. It owns model selection,
 // enabling, reasoning, and context windows; provider credentials and endpoints
 // live on the Providers page.
 func (m *Model) modelsSettingsTabs() []settingsTab {

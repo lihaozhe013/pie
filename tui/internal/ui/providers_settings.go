@@ -13,7 +13,7 @@ import (
 
 // providersSettingsTab builds the Providers page. It owns credentials, default
 // provider selection, compatible endpoints, and subscription usage; model
-// selection and metadata stay on the Models page.
+// selection and metadata stay on the Model settings page.
 func (m *Model) providersSettingsTab() settingsTab {
 	tab := settingsTab{
 		ID:    "providers",
