@@ -546,11 +546,11 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 		},
 		settingsRow{
 			ID:    "model-levels",
-			Label: "Thinking level map",
+			Label: "Thinking levels",
 			Kind:  settingsAction,
-			Help:  "Map pi levels to provider values; blank inherits, '-' marks unsupported.",
+			Help:  "Choose which reasoning levels this model offers.",
 			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				m.openThinkingMapEditor(draft)
+				m.openThinkingLevelsEditor(draft)
 				return nil
 			},
 		},
@@ -603,54 +603,51 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 	m.openProvidersPanel("Model: "+draft.ID, rows)
 }
 
-// openThinkingMapEditor edits one model's thinkingLevelMap entries.
-func (m *Model) openThinkingMapEditor(draft *modelDraft) {
+// openThinkingLevelsEditor toggles the reasoning levels a model offers. A level
+// stays unset when available so pi keeps its provider default, except xhigh and
+// max: pi only offers those when thinkingLevelMap names them, so enabling one
+// stores its own name. Existing provider values from models.json are kept as
+// they are; the editor no longer accepts arbitrary values.
+func (m *Model) openThinkingLevelsEditor(draft *modelDraft) {
 	rows := make([]settingsRow, 0, len(config.ThinkingLevels)+1)
 	rows = append(rows, settingsRow{
 		ID:      "levels-note",
-		Label:   "Format",
+		Label:   "Availability",
 		Kind:    settingsInfo,
-		Current: func() string { return "blank = default, - = unsupported" },
+		Current: func() string { return "on = selectable, off = unsupported" },
+		Help:    "Available levels appear in the reasoning selectors. xhigh and max are stored by name; other levels keep pi's default.",
 	})
 	for _, level := range config.ThinkingLevels {
 		level := level
 		rows = append(rows, settingsRow{
 			ID:    "level-" + level,
 			Label: level,
-			Kind:  settingsText,
-			Current: func() string {
+			Kind:  settingsToggle,
+			Bool: func() bool {
 				value, ok := draft.Levels[level]
 				if !ok {
-					return "default"
+					// pi keeps every level through high when the entry is
+					// absent, but only offers xhigh and max when it is named.
+					return level != "xhigh" && level != "max"
 				}
-				if value == nil {
-					return "unsupported"
-				}
-				return *value
+				return value != nil
 			},
-			EditValue: func() string {
-				value, ok := draft.Levels[level]
-				if !ok || value == nil {
-					return ""
-				}
-				return *value
-			},
-			Apply: func(value string) error {
-				value = strings.TrimSpace(value)
-				switch value {
-				case "":
-					delete(draft.Levels, level)
-				case "-":
+			SetBool: func(on bool) error {
+				if !on {
 					draft.Levels[level] = nil
-				default:
-					copied := value
-					draft.Levels[level] = &copied
+					return nil
 				}
+				if level == "xhigh" || level == "max" {
+					named := level
+					draft.Levels[level] = &named
+					return nil
+				}
+				delete(draft.Levels, level)
 				return nil
 			},
 		})
 	}
-	m.openProvidersPanel("Thinking map: "+draft.ID, rows)
+	m.openProvidersPanel("Thinking levels: "+draft.ID, rows)
 }
 
 func (m *Model) saveModelDraft(draft *modelDraft) error {

@@ -954,7 +954,7 @@ function ProviderDetail({
   );
 }
 
-// ── ThinkingLevelMap editor ───────────────────────────────────────────────────
+// ── Thinking levels editor ────────────────────────────────────────────────────
 
 const THINKING_LEVELS = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const;
 type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -969,22 +969,48 @@ const LEVEL_COLORS: Record<ThinkingLevel, string> = {
   max: '#ef4444'
 };
 
-function ThinkingLevelMapEditor({
+/**
+ * Whether pi offers a reasoning level. The map marks a level `null` when the
+ * model does not support it; pi keeps the provider default for every level
+ * through `high` when its entry is absent, but it only offers `xhigh` and `max`
+ * when the map names them.
+ */
+function thinkingLevelAvailable(
+  map: Record<string, string | null> | undefined,
+  level: ThinkingLevel
+): boolean {
+  const raw = map?.[level];
+  if (raw === null) return false;
+  if (level === 'xhigh' || level === 'max') return raw !== undefined;
+  return true;
+}
+
+/**
+ * Which pi reasoning levels a model offers, read from `thinkingLevelMap`.
+ *
+ * Enabling `xhigh` or `max` stores its own name, because pi does not offer them
+ * without an entry. Provider values already in models.json stay untouched and
+ * are shown read-only: this editor only chooses availability, never a custom
+ * value.
+ */
+function ThinkingLevelsEditor({
   value,
   onChange
 }: {
   value: Record<string, string | null> | undefined;
   onChange: (v: Record<string, string | null> | undefined) => void;
 }) {
+  const { t } = useI18n();
   const map = value ?? {};
 
-  const setLevel = (level: ThinkingLevel, entry: string | null | 'omit') => {
+  const setAvailable = (level: ThinkingLevel, available: boolean) => {
+    // Clicking the state a level is already in must not rewrite a provider
+    // value that models.json set for it.
+    if (available === thinkingLevelAvailable(map, level)) return;
     const next = { ...map };
-    if (entry === 'omit') {
-      delete next[level];
-    } else {
-      next[level] = entry;
-    }
+    if (!available) next[level] = null;
+    else if (level === 'xhigh' || level === 'max') next[level] = level;
+    else delete next[level];
     onChange(Object.keys(next).length ? next : undefined);
   };
 
@@ -992,13 +1018,8 @@ function ThinkingLevelMapEditor({
     <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       {THINKING_LEVELS.map((level) => {
         const raw = map[level];
-        const state: 'omit' | 'null' | 'string' = !(level in map)
-          ? 'omit'
-          : raw === null
-            ? 'null'
-            : 'string';
-        const strVal = typeof raw === 'string' ? raw : '';
-        const color = LEVEL_COLORS[level];
+        const available = thinkingLevelAvailable(map, level);
+        const providerValue = typeof raw === 'string' && raw !== level ? raw : null;
 
         const btnBase: React.CSSProperties = {
           padding: '4px 10px',
@@ -1011,12 +1032,12 @@ function ThinkingLevelMapEditor({
           background: 'var(--bg-panel)',
           color: 'var(--text-dim)'
         };
-        const btnActive: React.CSSProperties = {
+        const btnAvailable: React.CSSProperties = {
           background: 'var(--accent)',
           color: 'var(--accent-contrast)',
           fontWeight: 600
         };
-        const btnActiveDisabled: React.CSSProperties = {
+        const btnUnavailable: React.CSSProperties = {
           background: '#ef4444',
           color: '#fff',
           fontWeight: 600
@@ -1043,17 +1064,17 @@ function ThinkingLevelMapEditor({
                   width: 6,
                   height: 6,
                   borderRadius: '50%',
-                  background: color,
+                  background: LEVEL_COLORS[level],
                   flexShrink: 0,
-                  opacity: state === 'null' ? 0.3 : 1
+                  opacity: available ? 1 : 0.3
                 }}
               />
               <span
                 style={{
                   fontSize: 11,
                   fontFamily: 'var(--font-mono)',
-                  color: state === 'null' ? 'var(--text-dim)' : 'var(--text-muted)',
-                  textDecoration: state === 'null' ? 'line-through' : 'none'
+                  color: available ? 'var(--text-muted)' : 'var(--text-dim)',
+                  textDecoration: available ? 'none' : 'line-through'
                 }}
               >
                 {level}
@@ -1070,64 +1091,40 @@ function ThinkingLevelMapEditor({
               }}
             >
               <button
-                onClick={() => setLevel(level, 'omit')}
-                style={{ ...btnBase, ...(state === 'omit' ? btnActive : {}) }}
+                onClick={() => setAvailable(level, true)}
+                aria-pressed={available}
+                style={{ ...btnBase, ...(available ? btnAvailable : {}) }}
               >
-                Default
+                {t('models.levelAvailable')}
               </button>
               <button
-                onClick={() => setLevel(level, null)}
+                onClick={() => setAvailable(level, false)}
+                aria-pressed={!available}
                 style={{
                   ...btnBase,
                   borderLeft: '1px solid var(--border)',
-                  ...(state === 'null' ? btnActiveDisabled : {})
+                  ...(available ? {} : btnUnavailable)
                 }}
               >
-                Disabled
+                {t('models.levelUnavailable')}
               </button>
             </div>
 
-            <div
-              style={{
-                display: 'flex',
-                borderRadius: 5,
-                border: `1px solid ${state === 'string' ? 'var(--accent)' : 'var(--border)'}`,
-                overflow: 'hidden',
-                transition: 'border-color 0.1s'
-              }}
-            >
-              <button
-                onClick={() => setLevel(level, strVal || level)}
+            {providerValue && (
+              <code
+                title={t('models.levelProviderValue', { value: providerValue })}
                 style={{
-                  ...btnBase,
-                  ...(state === 'string' ? btnActive : {}),
-                  borderRight: '1px solid var(--border)',
-                  flexShrink: 0
+                  fontSize: 10,
+                  color: 'var(--text-dim)',
+                  fontFamily: 'var(--font-mono)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap'
                 }}
               >
-                Custom
-              </button>
-              <input
-                value={strVal}
-                onChange={(e) => setLevel(level, e.target.value)}
-                onFocus={() => {
-                  if (state !== 'string') setLevel(level, strVal || level);
-                }}
-                placeholder={level}
-                maxLength={10}
-                style={{
-                  width: '12ch',
-                  background: state === 'string' ? 'var(--bg)' : 'var(--bg-panel)',
-                  border: 'none',
-                  outline: 'none',
-                  color: state === 'string' ? 'var(--text)' : 'var(--text-dim)',
-                  fontFamily: 'var(--font-mono)',
-                  fontSize: 11,
-                  padding: '4px 7px',
-                  transition: 'background 0.1s, color 0.1s'
-                }}
-              />
-            </div>
+                → {providerValue}
+              </code>
+            )}
           </div>
         );
       })}
@@ -1538,7 +1535,11 @@ function ModelDetail({
       ? t('models.compatSummary', { count: compatibilityOverrideCount })
       : null,
     Object.keys(model.thinkingLevelMap ?? {}).length
-      ? t('models.thinkingSummary', { count: Object.keys(model.thinkingLevelMap ?? {}).length })
+      ? t('models.thinkingSummary', {
+          count: THINKING_LEVELS.filter((level) =>
+            thinkingLevelAvailable(model.thinkingLevelMap, level)
+          ).length
+        })
       : null
   ].filter((part): part is string => Boolean(part));
   const advancedSummary = advancedSummaryParts.length
@@ -2002,7 +2003,7 @@ function ModelDetail({
                       marginBottom: 8
                     }}
                   >
-                    <SectionTitle>{t('models.thinkingLevelMap')}</SectionTitle>
+                    <SectionTitle>{t('models.thinkingLevels')}</SectionTitle>
                     {model.thinkingLevelMap && (
                       <button
                         type="button"
@@ -2020,10 +2021,13 @@ function ModelDetail({
                       </button>
                     )}
                   </div>
-                  <ThinkingLevelMapEditor
+                  <ThinkingLevelsEditor
                     value={model.thinkingLevelMap}
                     onChange={(v) => set('thinkingLevelMap', v)}
                   />
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 4 }}>
+                    {t('models.thinkingLevelsHelp')}
+                  </span>
                 </div>
               </div>
             )}
