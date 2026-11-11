@@ -397,7 +397,12 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 		m.openModelPanel(providerID, modelID)
 		return
 	}
-	draft := m.modelDraftFrom(providerID, modelID, isNew)
+	m.showModelEditor(m.modelDraftFrom(providerID, modelID, isNew))
+}
+
+// showModelEditor installs the form for an existing draft, so a drill-down
+// panel can return to it without losing unsaved edits.
+func (m *Model) showModelEditor(draft *modelDraft) {
 	rows := []settingsRow{
 		{
 			ID:      "model-provider",
@@ -560,16 +565,7 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 			Kind:  settingsAction,
 			Help:  "Writes the model to models.json.",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
-				if err := m.saveModelDraft(draft); err != nil {
-					s.err = err.Error()
-					return nil
-				}
-				m.reloadConfig()
-				m.openProviderPanel(draft.ProviderID)
-				if m.settingsPanel != nil {
-					m.settingsPanel.notice = "model saved"
-				}
-				return nil
+				return m.saveModelAction(draft, s)
 			},
 		},
 	)
@@ -601,6 +597,21 @@ func (m *Model) openModelEditor(providerID, modelID string, isNew bool) {
 	}
 
 	m.openProvidersPanel("Model: "+draft.ID, rows)
+}
+
+// saveModelAction writes the draft and leaves its form for the provider panel.
+// The model form and the thinking-levels panel share it.
+func (m *Model) saveModelAction(draft *modelDraft, s *settingsState) tea.Cmd {
+	if err := m.saveModelDraft(draft); err != nil {
+		s.err = err.Error()
+		return nil
+	}
+	m.reloadConfig()
+	m.openProviderPanel(draft.ProviderID)
+	if m.settingsPanel != nil {
+		m.settingsPanel.notice = "model saved"
+	}
+	return nil
 }
 
 // openThinkingLevelsEditor toggles the reasoning levels a model offers. A level
@@ -647,7 +658,28 @@ func (m *Model) openThinkingLevelsEditor(draft *modelDraft) {
 			},
 		})
 	}
-	m.openProvidersPanel("Thinking levels: "+draft.ID, rows)
+	rows = append(rows, settingsRow{
+		ID:    "levels-save",
+		Label: "Save model",
+		Kind:  settingsAction,
+		Help:  "Writes the model, including these levels, to models.json.",
+		Run: func(m *Model, s *settingsState) tea.Cmd {
+			return m.saveModelAction(draft, s)
+		},
+	})
+	// Esc returns to the model form with the same draft, so levels can be
+	// reviewed before saving instead of being dropped with the panel.
+	state := newSettingsPanel("Thinking levels: "+draft.ID, []settingsTab{{
+		ID:    "panel",
+		Label: "Thinking levels: " + draft.ID,
+		Rows:  rows,
+	}})
+	state.action = "settings-panel"
+	state.back = func(mm *Model) tea.Cmd {
+		mm.showModelEditor(draft)
+		return nil
+	}
+	m.showPage(state)
 }
 
 func (m *Model) saveModelDraft(draft *modelDraft) error {
