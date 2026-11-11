@@ -210,7 +210,7 @@ terminal lacks bracketed paste.
 | `enter` | send the prompt (stages a follow-up above the prompt while a turn is running) |
 | `alt+enter`, `ctrl+j`, `\` then `enter` | insert a newline |
 | `alt+s` | steer the running turn |
-| `esc` | interrupt the running turn (queues are restored to the editor) |
+| `esc` `esc` | interrupt the running turn (queues are restored to the editor) |
 | `ctrl+c` | clear the prompt without interrupting (press `up` to restore it); on an empty prompt, press twice to quit |
 | `ctrl+d` | delete the character under the cursor; quit when the editor is empty; twice in the resume list, delete the selected session |
 | `ctrl+k` | pick a model |

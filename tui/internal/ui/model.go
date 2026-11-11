@@ -67,6 +67,9 @@ const (
 	tickInterval = 40 * time.Millisecond
 	// toastDuration is how long extension notifications stay visible.
 	toastDuration = 5 * time.Second
+	// interruptWindow is how long the first esc waits for a second press.
+	// A lone esc only arms the interrupt, so a stray press cannot stop pi.
+	interruptWindow = 1500 * time.Millisecond
 	// heartbeatInterval expires toasts even when pi is idle.
 	heartbeatInterval = time.Second
 	// externalNamePollInterval keeps a Web-generated title visible without
@@ -270,6 +273,7 @@ type Model struct {
 	ready        bool
 	quitting     bool
 	ctrlCAt      time.Time
+	escAt        time.Time
 
 	dialogs []*rpc.ExtensionUIRequestEvent
 
@@ -1439,7 +1443,7 @@ func (m *Model) renderEditor() string {
 		if !m.enterToSend {
 			followUp = "alt+enter follow-up"
 		}
-		hint = "esc interrupt · alt+s steer · " + followUp
+		hint = "esc esc interrupt · alt+s steer · " + followUp
 	}
 	if m.disconnected {
 		hint = "pi exited · ctrl+c to quit"

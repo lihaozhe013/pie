@@ -585,14 +585,19 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.composer.ClearSelection()
 	}
 
+	key := msg.String()
+	// Any other key disarms a pending interrupt, so it takes two esc presses
+	// with nothing in between to stop the running turn.
+	if key != "esc" {
+		m.escAt = time.Time{}
+	}
+
 	if m.overlay != nil {
 		return m.handleOverlayKey(msg)
 	}
 	if m.ask != nil {
 		return m.handleAskKey(msg)
 	}
-
-	key := msg.String()
 
 	// The palette stays reachable whatever the composer holds, so it wins over
 	// the completion popup's navigation keys.
@@ -641,7 +646,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// An empty prompt only has the quit chord left, and old ctrl+c
 			// habits must not end the client while pi is still working.
 			m.ctrlCAt = time.Time{}
-			m.setToast("esc interrupts the running turn")
+			m.setToast("press esc twice to interrupt the running turn")
 			return m, nil
 		}
 		// On an empty prompt two presses quit. A clear disarms the window, so
@@ -660,7 +665,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case "esc":
 		if m.busy {
-			return m, m.abort()
+			// The completion popup owns esc while it is open, so dismissing it
+			// never doubles as the first half of an interrupt.
+			if m.completion.visible {
+				m.completion.Hide()
+				m.layout()
+				return m, nil
+			}
+			if time.Since(m.escAt) < interruptWindow {
+				m.escAt = time.Time{}
+				return m, m.abort()
+			}
+			m.escAt = time.Now()
+			m.setToast("press esc again to interrupt")
+			return m, nil
 		}
 		if m.completion.visible {
 			m.completion.Hide()
@@ -1134,7 +1152,7 @@ func (m *Model) helpItems() []pickerItem {
 		{"enter", "send prompt (stages a follow-up above the prompt while running)"},
 		{"alt+enter / ctrl+j", "insert a newline"},
 		{"alt+s", "steer the running turn"},
-		{"esc", "interrupt the running turn (queues are restored to the editor)"},
+		{"esc esc", "interrupt the running turn (queues are restored to the editor)"},
 		{"ctrl+c", "clear the prompt (up restores it); on an empty prompt, twice to quit"},
 		{"ctrl+d", "in the resume list, twice to delete the selected session"},
 		{"ctrl+k", "pick a model"},

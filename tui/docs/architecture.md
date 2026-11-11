@@ -178,8 +178,9 @@ cell so multi-line selections read as one block.
 Clearing the prompt with `ctrl+c` pushes the draft into the editor's history, so
 `up` restores it after an accidental clear. Submitted prompts and cleared drafts
 share the same history ring. The chord never interrupts a running turn, which
-keeps a mistyped follow-up editable-in-reverse instead of stopping pi; `esc` is
-the interrupt chord. With an empty prompt, `ctrl+c` still arms quit on the
+keeps a mistyped follow-up editable-in-reverse instead of stopping pi; pressing
+`esc` twice is the interrupt chord, and the first press only arms it so a stray
+`esc` cannot stop pi. With an empty prompt, `ctrl+c` still arms quit on the
 second press once no turn is running.
 
 Mouse capture is on by default. `shift+drag` is left to the terminal for native
