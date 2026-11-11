@@ -406,7 +406,11 @@ func (t *transcript) renderThinking(b *block, width int) string {
 	if strings.TrimSpace(text) == "" {
 		return head
 	}
-	lines := strings.Split(text, "\n")
+	bodyWidth := width - 2
+	if bodyWidth < 1 {
+		bodyWidth = 1
+	}
+	lines := strings.Split(wrapANSI(text, bodyWidth), "\n")
 	hidden := 0
 	if b.full {
 		if len(lines) > expandedBodyCap {
@@ -426,7 +430,7 @@ func (t *transcript) renderThinking(b *block, width int) string {
 		out.WriteString(t.styles.faint.Render(label))
 		out.WriteString("\n")
 	}
-	out.WriteString(t.styles.thinkingBody.Width(width - 2).Render(strings.Join(lines, "\n")))
+	out.WriteString(t.styles.thinkingBody.Width(bodyWidth).Render(strings.Join(lines, "\n")))
 	return head + "\n" + indentLines(out.String(), "  ")
 }
 
@@ -492,7 +496,11 @@ func (t *transcript) renderTool(b *block, width int) string {
 // the result never changes the transcript height. ctrl+o renders the full body
 // up to expandedBodyCap.
 func (t *transcript) renderToolBody(b *block, width int) string {
-	lines := strings.Split(strings.TrimRight(b.body, "\n"), "\n")
+	bodyWidth := width - 2
+	if bodyWidth < 1 {
+		bodyWidth = 1
+	}
+	lines := strings.Split(wrapANSI(strings.TrimRight(b.body, "\n"), bodyWidth), "\n")
 	hidden := 0
 	if b.collapsed {
 		if len(lines) > toolTailLines {
@@ -512,7 +520,7 @@ func (t *transcript) renderToolBody(b *block, width int) string {
 		out.WriteString(t.styles.faint.Render(label))
 		out.WriteString("\n")
 	}
-	out.WriteString(t.styles.toolMeta.Width(width - 2).Render(strings.Join(lines, "\n")))
+	out.WriteString(t.styles.toolMeta.Width(bodyWidth).Render(strings.Join(lines, "\n")))
 	return out.String()
 }
 

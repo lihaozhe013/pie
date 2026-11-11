@@ -261,6 +261,9 @@ func (m *Model) applyStreamUpdate(update *rpc.MessageUpdateEvent) {
 		m.activity.phase = activityStreaming
 		m.activity.draftTool = ""
 		m.activity.ensureStarted()
+		if m.stream.thinking != nil && m.stream.thinking.streaming {
+			m.stream.thinking.streaming = false
+		}
 		if m.stream.assistant == nil {
 			m.stream.assistant = newBlock(blockAssistant, "")
 			m.stream.assistant.streaming = true
@@ -274,6 +277,9 @@ func (m *Model) applyStreamUpdate(update *rpc.MessageUpdateEvent) {
 		// being written keeps the bar alive while its arguments stream.
 		m.activity.phase = activityPreparingTool
 		m.activity.ensureStarted()
+		if m.stream.thinking != nil && m.stream.thinking.streaming {
+			m.stream.thinking.streaming = false
+		}
 		if update.Assistant.ToolName != "" {
 			m.activity.draftTool = update.Assistant.ToolName
 		}
