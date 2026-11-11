@@ -13,7 +13,7 @@ func testTranscript(lines ...string) *transcript {
 }
 
 func testTranscriptSized(width, height int, lines ...string) *transcript {
-	tr := newTranscript(newStyles(defaultTheme()))
+	tr := newTranscript(newStyles())
 	tr.SetSize(width, height)
 	tr.content = lines
 	tr.vp.SetContent(strings.Join(lines, "\n"))

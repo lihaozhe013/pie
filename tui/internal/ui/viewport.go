@@ -170,18 +170,6 @@ func (t *transcript) DropWelcome() {
 // MarkDirty schedules a re-render on the next View.
 func (t *transcript) MarkDirty() { t.dirty = true }
 
-// SetStyles swaps the palette and invalidates rendered caches.
-func (t *transcript) SetStyles(st styles) {
-	t.styles = st
-	t.md = markdownRenderer{style: st.markdownStyle()}
-	for _, b := range t.blocks {
-		b.cache.valid = false
-		b.stable.width = 0
-		b.invalidate()
-	}
-	t.dirty = true
-}
-
 // LastAssistant returns the most recent assistant block, if any.
 func (t *transcript) LastAssistant() *block {
 	for i := len(t.blocks) - 1; i >= 0; i-- {

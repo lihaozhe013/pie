@@ -68,7 +68,7 @@ func (m *Model) splashModel() string {
 
 // welcomeCard is the plain content of the startup card. The block stores the
 // facts instead of pre-rendered rows so the card follows the frame width and
-// the transcript height, and a theme change recolours it like any other block.
+// the transcript height.
 type welcomeCard struct {
 	Tagline  string
 	Greeting string

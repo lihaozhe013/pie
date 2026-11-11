@@ -65,7 +65,7 @@ subagents, no second agent loop, no parallel protocol.
   launch starts where the last one ended
 - A command palette (`ctrl+p`) that searches and runs client or pi commands
   without clearing the composer draft
-- A settings page (`/settings`) that keeps client and pi preferences: theme,
+- A settings page (`/settings`) that keeps client and pi preferences:
   submit key, thinking blocks, tool output, notices, session directory, and the
   global `AGENTS.md` and tool presets. It shares pi's files with the web UI:
   `settings.json`, `AGENTS.md`, and the `pie-*` companion files in the agent
@@ -141,8 +141,6 @@ subagents, no second agent loop, no parallel protocol.
   package. Enable the panel in Settings › General after installing
   `pi-better-goal`; enabling it without the package is refused with the install
   command
-- Pie's 18 color themes, applied instantly and saved to the terminal-only
-  preferences file
 - A bundled bridge extension (loaded with `-e`) that adds hot tool switching,
   Plan and Autonomous modes, the `ask_user` question tool, and reload over RPC,
   using the same `pie:*` session entries as the web UI

@@ -6,51 +6,50 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// theme is the dark, low-noise palette of the client. Every color is adaptive so
-// the UI stays readable on light terminals without a separate theme file.
+// theme is the dark, low-noise palette of the client.
 type theme struct {
-	Base        lipgloss.AdaptiveColor
-	Muted       lipgloss.AdaptiveColor
-	Faint       lipgloss.AdaptiveColor
-	Editor      lipgloss.AdaptiveColor
-	Accent      lipgloss.AdaptiveColor
-	AccentSoft  lipgloss.AdaptiveColor
-	User        lipgloss.AdaptiveColor
-	Assistant   lipgloss.AdaptiveColor
-	Thinking    lipgloss.AdaptiveColor
-	Tool        lipgloss.AdaptiveColor
-	Success     lipgloss.AdaptiveColor
-	Warn        lipgloss.AdaptiveColor
-	Danger      lipgloss.AdaptiveColor
-	DiffAdd     lipgloss.AdaptiveColor
-	DiffDel     lipgloss.AdaptiveColor
-	Border      lipgloss.AdaptiveColor
-	Panel       lipgloss.AdaptiveColor
-	Activity    lipgloss.AdaptiveColor
-	ActivityDim lipgloss.AdaptiveColor
+	Base        lipgloss.Color
+	Muted       lipgloss.Color
+	Faint       lipgloss.Color
+	Editor      lipgloss.Color
+	Accent      lipgloss.Color
+	AccentSoft  lipgloss.Color
+	User        lipgloss.Color
+	Assistant   lipgloss.Color
+	Thinking    lipgloss.Color
+	Tool        lipgloss.Color
+	Success     lipgloss.Color
+	Warn        lipgloss.Color
+	Danger      lipgloss.Color
+	DiffAdd     lipgloss.Color
+	DiffDel     lipgloss.Color
+	Border      lipgloss.Color
+	Panel       lipgloss.Color
+	Activity    lipgloss.Color
+	ActivityDim lipgloss.Color
 }
 
 func defaultTheme() theme {
 	return theme{
-		Base:        lipgloss.AdaptiveColor{Light: "#2B2B33", Dark: "#E4E5E9"},
-		Muted:       lipgloss.AdaptiveColor{Light: "#5F6068", Dark: "#B7B7B7"},
-		Faint:       lipgloss.AdaptiveColor{Light: "#84858D", Dark: "#A4A4A4"},
-		Editor:      lipgloss.AdaptiveColor{Light: "#5F6068", Dark: "#8A8B94"},
-		Accent:      lipgloss.AdaptiveColor{Light: "#4F85D1", Dark: "#8BB9FA"},
-		AccentSoft:  lipgloss.AdaptiveColor{Light: "#638EC9", Dark: "#6F9AD6"},
-		User:        lipgloss.AdaptiveColor{Light: "#1667A8", Dark: "#9AD1FF"},
-		Assistant:   lipgloss.AdaptiveColor{Light: "#2B2B33", Dark: "#D5D6DB"},
-		Thinking:    lipgloss.AdaptiveColor{Light: "#6B6C74", Dark: "#B7B7B7"},
-		Tool:        lipgloss.AdaptiveColor{Light: "#4F85D1", Dark: "#A9C7F0"},
-		Success:     lipgloss.AdaptiveColor{Light: "#1A7F37", Dark: "#7EE787"},
-		Warn:        lipgloss.AdaptiveColor{Light: "#8A5B00", Dark: "#E5A84B"},
-		Danger:      lipgloss.AdaptiveColor{Light: "#CF222E", Dark: "#FF7B72"},
-		DiffAdd:     lipgloss.AdaptiveColor{Light: "#1A7F37", Dark: "#7EE787"},
-		DiffDel:     lipgloss.AdaptiveColor{Light: "#CF222E", Dark: "#FF7B72"},
-		Border:      lipgloss.AdaptiveColor{Light: "#C6C7CE", Dark: "#33343D"},
-		Panel:       lipgloss.AdaptiveColor{Light: "#F2F2F5", Dark: "#1C1D24"},
-		Activity:    lipgloss.AdaptiveColor{Light: "#1667D8", Dark: "#5AA9FF"},
-		ActivityDim: lipgloss.AdaptiveColor{Light: "#7FA9DC", Dark: "#2F5D8F"},
+		Base:        lipgloss.Color("#E4E5E9"),
+		Muted:       lipgloss.Color("#B7B7B7"),
+		Faint:       lipgloss.Color("#A4A4A4"),
+		Editor:      lipgloss.Color("#8A8B94"),
+		Accent:      lipgloss.Color("#8BB9FA"),
+		AccentSoft:  lipgloss.Color("#6F9AD6"),
+		User:        lipgloss.Color("#9AD1FF"),
+		Assistant:   lipgloss.Color("#D5D6DB"),
+		Thinking:    lipgloss.Color("#B7B7B7"),
+		Tool:        lipgloss.Color("#A9C7F0"),
+		Success:     lipgloss.Color("#7EE787"),
+		Warn:        lipgloss.Color("#E5A84B"),
+		Danger:      lipgloss.Color("#FF7B72"),
+		DiffAdd:     lipgloss.Color("#7EE787"),
+		DiffDel:     lipgloss.Color("#FF7B72"),
+		Border:      lipgloss.Color("#33343D"),
+		Panel:       lipgloss.Color("#1C1D24"),
+		Activity:    lipgloss.Color("#5AA9FF"),
+		ActivityDim: lipgloss.Color("#2F5D8F"),
 	}
 }
 
@@ -62,7 +61,7 @@ var editorRuleBorder = lipgloss.Border{
 	Bottom: "─",
 }
 
-// styles holds prebuilt Lip Gloss styles for one theme.
+// styles holds prebuilt Lip Gloss styles.
 type styles struct {
 	theme theme
 
@@ -128,7 +127,8 @@ type styles struct {
 	diffMeta          lipgloss.Style
 }
 
-func newStyles(t theme) styles {
+func newStyles() styles {
+	t := defaultTheme()
 	return styles{
 		theme: t,
 
@@ -227,7 +227,7 @@ func (s styles) markdownStyle() ansi.StyleConfig {
 	style.Document.Margin = uintPtr(0)
 	style.Document.BlockPrefix = ""
 	style.Document.BlockSuffix = ""
-	style.Document.Color = colorPtr(s.theme.Base.Dark)
+	style.Document.Color = colorPtr(string(s.theme.Base))
 
 	// Headings keep their "#" markers, like Codex's TUI, so copied text stays
 	// valid Markdown. Levels are colour-coded, and H1 loses glamour's background
@@ -235,50 +235,49 @@ func (s styles) markdownStyle() ansi.StyleConfig {
 	style.H1.Prefix = "# "
 	style.H1.Suffix = ""
 	style.H1.BackgroundColor = nil
-	style.H1.Color = colorPtr(s.theme.Accent.Dark)
+	style.H1.Color = colorPtr(string(s.theme.Accent))
 	style.H1.Bold = boolPtr(true)
-	style.H2.Color = colorPtr(s.theme.AccentSoft.Dark)
+	style.H2.Color = colorPtr(string(s.theme.AccentSoft))
 	style.H2.Bold = boolPtr(true)
-	style.H3.Color = colorPtr(s.theme.Base.Dark)
+	style.H3.Color = colorPtr(string(s.theme.Base))
 	style.H3.Bold = boolPtr(true)
-	style.H4.Color = colorPtr(s.theme.Muted.Dark)
+	style.H4.Color = colorPtr(string(s.theme.Muted))
 	style.H4.Bold = boolPtr(true)
-	style.H5.Color = colorPtr(s.theme.Muted.Dark)
+	style.H5.Color = colorPtr(string(s.theme.Muted))
 	style.H5.Bold = boolPtr(false)
 	style.H5.Italic = boolPtr(true)
-	style.H6.Color = colorPtr(s.theme.Muted.Dark)
+	style.H6.Color = colorPtr(string(s.theme.Muted))
 	style.H6.Bold = boolPtr(false)
 	style.H6.Italic = boolPtr(true)
-	style.Heading.Color = colorPtr(s.theme.Accent.Dark)
+	style.Heading.Color = colorPtr(string(s.theme.Accent))
 
-	style.Emph.Color = colorPtr(s.theme.AccentSoft.Dark)
-	style.Strong.Color = colorPtr(s.theme.Base.Dark)
+	style.Emph.Color = colorPtr(string(s.theme.AccentSoft))
+	style.Strong.Color = colorPtr(string(s.theme.Base))
 	style.Strong.Bold = boolPtr(true)
-	style.Link.Color = colorPtr(s.theme.User.Dark)
-	style.LinkText.Color = colorPtr(s.theme.User.Dark)
+	style.Link.Color = colorPtr(string(s.theme.User))
+	style.LinkText.Color = colorPtr(string(s.theme.User))
 	style.LinkText.Underline = boolPtr(true)
-	style.HorizontalRule.Color = colorPtr(s.theme.Faint.Dark)
+	style.HorizontalRule.Color = colorPtr(string(s.theme.Faint))
 
-	style.Code.Color = colorPtr(s.theme.Base.Dark)
-	style.Code.BackgroundColor = colorPtr(s.theme.Panel.Dark)
+	style.Code.Color = colorPtr(string(s.theme.Base))
+	style.Code.BackgroundColor = colorPtr(string(s.theme.Panel))
 
-	style.CodeBlock.BackgroundColor = colorPtr(s.theme.Panel.Dark)
-	style.CodeBlock.Color = colorPtr(s.theme.Base.Dark)
+	style.CodeBlock.BackgroundColor = colorPtr(string(s.theme.Panel))
+	style.CodeBlock.Color = colorPtr(string(s.theme.Base))
 	style.CodeBlock.Margin = uintPtr(1)
 
 	style.BlockQuote.Indent = uintPtr(1)
 	style.BlockQuote.IndentToken = stringPtr("│ ")
-	style.BlockQuote.Color = colorPtr(s.theme.Muted.Dark)
-	style.BlockQuote.IndentToken = stringPtr("│ ")
+	style.BlockQuote.Color = colorPtr(string(s.theme.Muted))
 
 	style.List.LevelIndent = 2
-	style.Item.Color = colorPtr(s.theme.AccentSoft.Dark)
-	style.Enumeration.Color = colorPtr(s.theme.AccentSoft.Dark)
+	style.Item.Color = colorPtr(string(s.theme.AccentSoft))
+	style.Enumeration.Color = colorPtr(string(s.theme.AccentSoft))
 
 	style.Table.CenterSeparator = stringPtr("┼")
 	style.Table.ColumnSeparator = stringPtr("│")
 	style.Table.RowSeparator = stringPtr("─")
-	style.Table.Color = colorPtr(s.theme.Base.Dark)
+	style.Table.Color = colorPtr(string(s.theme.Base))
 
 	return style
 }

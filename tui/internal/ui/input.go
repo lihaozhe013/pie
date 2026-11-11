@@ -111,11 +111,6 @@ func (c *composer) SetMaxRows(rows int) {
 	c.updateViewport()
 }
 
-// SetStyles swaps the palette used by the editor.
-func (c *composer) SetStyles(st styles) {
-	c.styles = st
-}
-
 // SetPlaceholder swaps the hint shown on an empty prompt. The ask_user panel
 // borrows it so the field reads as the free-form answer choice.
 func (c *composer) SetPlaceholder(text string) {

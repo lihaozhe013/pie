@@ -906,38 +906,13 @@ func (m *Model) editGlobalInstructions(s *settingsState) tea.Cmd {
 }
 
 // generalSettingsTab is the Settings home's first category. It absorbs the
-// appearance preferences a terminal can honour: theme, submit key, thinking
+// preferences a terminal can honour: submit key, thinking
 // blocks, and tool-output expansion.
 func (m *Model) generalSettingsTab() settingsTab {
 	tab := settingsTab{ID: "general", Label: "General", Note: "Shared settings are written to pi's files immediately."}
 
 	if m.prefs != nil {
-		themeChoices := make([]pickerItem, 0, len(themeOptions))
-		for _, option := range themeOptions {
-			detail := option.Scheme
-			if detail == "" {
-				detail = "follows the terminal"
-			}
-			themeChoices = append(themeChoices, pickerItem{Value: option.ID, Label: option.Label, Detail: detail})
-		}
 		tab.Rows = append(tab.Rows,
-			settingsRow{
-				ID:    "theme",
-				Label: "Theme",
-				Help:  "Paint the transcript and chrome with pie's palette. Applies immediately.",
-				Kind:  settingsChoice,
-				Current: func() string {
-					return ThemeLabel(m.prefs.Theme())
-				},
-				Choices: themeChoices,
-				Apply: func(value string) error {
-					if err := m.prefs.SetTheme(value); err != nil {
-						return err
-					}
-					m.applyTheme(value)
-					return nil
-				},
-			},
 			settingsRow{
 				ID:    "enter-sends",
 				Label: "Enter sends",
@@ -1120,12 +1095,4 @@ func (m *Model) instructionsSettingsTab() settingsTab {
 		},
 	)
 	return tab
-}
-
-// applyTheme rebuilds the style set and pushes it into the cached renderers.
-func (m *Model) applyTheme(id string) {
-	m.styles = newStyles(themeFor(id))
-	m.transcript.SetStyles(m.styles)
-	m.composer.SetStyles(m.styles)
-	m.layout()
 }

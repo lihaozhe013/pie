@@ -128,7 +128,7 @@ storage; the resume-picker section below explains when it runs.
 - `syntax.go` — chroma-based syntax colours for tool content: a shell
   command, or the file a coding tool reads, writes, or edits. A call whose
   language is unknown stays plain, the way the web UI treats it. Diff rows
-  carry both the token colours and a theme-blended add/remove tint.
+  carry both the token colours and an add/remove tint blended into the panel colour.
 - `styles.go` — the Lip Gloss palette and the glamour style derived from it.
 - `splash.go` — the hand-drawn PIE wordmark, the startup card that opens the
   transcript, and the post-exit card printed after the alternate screen
@@ -216,8 +216,7 @@ cached like any other finished block.
 Tool content follows the same rule. A shell command and a diff are tokenized
 once when their block is built; the diff is capped first, so rows the 200-row
 scrollback limit drops are never coloured. The coloured rows live on the block,
-so streaming, scrolling, and a theme switch never tokenize again; only the diff
-tint is rebuilt from the new palette. Lexer lookups are cached because chroma's
+so streaming and scrolling never tokenize again. Lexer lookups are cached because chroma's
 file-name matcher walks every registered pattern.
 
 ## Configuration and the bridge
@@ -230,7 +229,7 @@ file-name matcher walks every registered pattern.
 - `pie-model-settings.json`, `pie-tool-presets.json`, and the session log's
   `pie:tool-selection` / `pie:work-mode` entries are Pie's files; the TUI reads
   and writes the same shapes.
-- `pie-settings.json` holds terminal-only choices: theme, thinking-block
+- `pie-settings.json` holds terminal-only choices: thinking-block
   visibility, tool expansion, the last working directory, and the last preset
   to seed a new session.
 

@@ -14,8 +14,7 @@ The pages share one interaction model, so learning one teaches the rest.
 | `/plugins` | Plugins | Pi packages |
 
 `/settings models`, `/settings providers`, `/settings skills`, `/settings mcp`,
-and `/settings plugins` redirect to the matching page. `/settings theme` lands
-on General, whose theme row absorbed the old Appearance category. `/model`
+and `/settings plugins` redirect to the matching page. `/model`
 remains the quick model picker; `/models` is the page.
 
 If pi advertises a command with the same name, pi's command wins, so an
@@ -65,7 +64,6 @@ shared `settings.json` values.
 
 | Row | File | Notes |
 | --- | --- | --- |
-| Theme | `pie-settings.json` | Pie's palette names; applies immediately. |
 | Enter sends | `pie-settings.json` | When off, enter inserts a newline and alt+enter sends. |
 | Thinking blocks | `pie-settings.json` | Same as `ctrl+t`; visible thinking keeps its newest three rows, and hidden thinking does not render at all. |
 | Expand output | `pie-settings.json` | Same as `ctrl+o`; expands thinking, tool output, and diffs. Collapsed cards always keep a fixed preview. |
@@ -194,7 +192,7 @@ it.
 
 ## Terminal-only preferences
 
-`pie-settings.json` holds choices a browser does not have: `theme`,
+`pie-settings.json` holds choices a browser does not have:
 `enterToSend`, `goalEnabled`, `lastCwd`, `toolPreset`, `showThinking`, and
 `expandTools`. `toolPreset` seeds a new session with the last preset chosen in
 the terminal; everything shared stays in pi's files. Model and thinking-level

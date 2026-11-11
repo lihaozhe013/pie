@@ -305,12 +305,12 @@ const (
 )
 
 // diffTint builds the background sequence a diff row is painted with.
-func diffTint(accent, base lipgloss.AdaptiveColor, alpha float64) string {
+func diffTint(accent, base lipgloss.Color, alpha float64) string {
 	profile := lipgloss.ColorProfile()
 	if profile == termenv.Ascii {
 		return ""
 	}
-	mixed, ok := blendHex(resolveAdaptive(accent), resolveAdaptive(base), alpha)
+	mixed, ok := blendHex(string(accent), string(base), alpha)
 	if !ok {
 		return ""
 	}
@@ -323,13 +323,6 @@ func diffTint(accent, base lipgloss.AdaptiveColor, alpha float64) string {
 		return ""
 	}
 	return termenv.CSI + seq + "m"
-}
-
-func resolveAdaptive(color lipgloss.AdaptiveColor) string {
-	if lipgloss.HasDarkBackground() {
-		return color.Dark
-	}
-	return color.Light
 }
 
 // blendHex mixes foreground into background at alpha. False means either input

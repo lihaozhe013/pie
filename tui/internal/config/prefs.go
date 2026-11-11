@@ -21,19 +21,6 @@ func LoadTUIConfig(paths Paths) (*TUIConfig, error) {
 // Path returns the file path.
 func (c *TUIConfig) Path() string { return c.path }
 
-// Theme returns the saved theme id, or "auto".
-func (c *TUIConfig) Theme() string {
-	return c.root.Get("theme").StringOr("auto")
-}
-
-// SetTheme saves the theme id.
-func (c *TUIConfig) SetTheme(theme string) error {
-	if theme == "" {
-		return fmt.Errorf("theme: empty id")
-	}
-	return c.update(func(root *Value) { root.SetString("theme", theme) })
-}
-
 // EnterToSend reports whether Enter submits the composer. Default true, the
 // terminal convention; Ctrl+Enter inserts a newline when this is false.
 func (c *TUIConfig) EnterToSend() bool {

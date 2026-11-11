@@ -414,15 +414,13 @@ func New(client Client, opts Options) *Model {
 		m.reloadConfig()
 	}
 
-	themeID := "auto"
 	if m.prefs != nil {
-		themeID = m.prefs.Theme()
 		m.showThinking = m.prefs.ShowThinking()
 		m.expanded = m.prefs.ExpandTools()
 		m.goalEnabled = m.prefs.GoalEnabled()
 		m.enterToSend = m.prefs.EnterToSend()
 	}
-	m.styles = newStyles(themeFor(themeID))
+	m.styles = newStyles()
 	m.transcript = newTranscript(m.styles)
 	// The startup card is the first entry of the conversation, not a panel that
 	// covers it; the handshake replaces it with the session facts.

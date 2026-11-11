@@ -143,7 +143,7 @@ The TUI must use this one root for every path and must not keep a second copy.
 | `models-store.json` | Provider model catalog cache | Read; refresh through `pi update --models` |
 | `pie-session-state.json` | Sidebar pins, archive, project order and names | Optional read later; not required for parity targets |
 | Session `.jsonl` entries | `pie:tool-selection`, `pie:work-mode`, goal entries | Read; write through the bridge extension |
-| `pie-settings.json` | TUI-only preferences: theme, send key, goal enabled, last working directory | Read/write (new file) |
+| `pie-settings.json` | TUI-only preferences: send key, goal enabled, last working directory | Read/write (new file) |
 
 The TUI-only file exists because a terminal has preferences a browser does not.
 Everything the two clients genuinely share stays in Pi's files.
