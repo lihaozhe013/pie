@@ -23,6 +23,7 @@ import (
 
 	"github.com/lihaozhe013/pie/tui/internal/bridge"
 	"github.com/lihaozhe013/pie/tui/internal/rpc"
+	"github.com/lihaozhe013/pie/tui/internal/session"
 	"github.com/lihaozhe013/pie/tui/internal/ui"
 )
 
@@ -75,18 +76,20 @@ const (
 )
 
 type config struct {
-	bin         string
-	provider    string
-	model       string
-	name        string
-	session     string
-	sessionDir  string
-	cwd         string
-	noSession   bool
-	noMouse     bool
-	debug       bool
-	showHelp    bool
-	showVersion bool
+	bin          string
+	provider     string
+	model        string
+	name         string
+	session      string
+	sessionDir   string
+	cwd          string
+	noSession    bool
+	continueLast bool
+	resume       bool
+	noMouse      bool
+	debug        bool
+	showHelp     bool
+	showVersion  bool
 }
 
 func main() {
@@ -121,6 +124,18 @@ func run(args []string, stderr io.Writer) int {
 
 	logger, closeLog := newLogger(cfg.debug, stderr)
 	defer closeLog()
+
+	if cfg.continueLast {
+		path, err := latestSession(cfg.sessionDir, cwd)
+		if err != nil {
+			logger.logf("continue: %v", err)
+		} else if path != "" {
+			cfg.session = path
+			logger.logf("continuing %s", path)
+		} else {
+			logger.logf("continue: no session for %s", cwd)
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
@@ -169,12 +184,13 @@ func run(args []string, stderr io.Writer) int {
 	}
 
 	model := ui.New(client, ui.Options{
-		SessionDir: cfg.sessionDir,
-		CWD:        cwd,
-		Version:    appVersion,
-		PiBin:      piBinary,
-		Restart:    restart,
-		Mouse:      !cfg.noMouse,
+		SessionDir:   cfg.sessionDir,
+		CWD:          cwd,
+		Version:      appVersion,
+		PiBin:        piBinary,
+		Restart:      restart,
+		Mouse:        !cfg.noMouse,
+		ResumePicker: cfg.resume,
 	})
 
 	options := []tea.ProgramOption{
@@ -219,6 +235,10 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 	fs.StringVar(&cfg.session, "session", "", "session file to resume")
 	fs.StringVar(&cfg.sessionDir, "session-dir", "", "session storage directory")
 	fs.StringVar(&cfg.cwd, "cwd", "", "working directory for the session (default: current directory)")
+	fs.BoolVar(&cfg.continueLast, "continue", false, "continue the most recent session for this directory")
+	fs.BoolVar(&cfg.continueLast, "c", false, "shorthand for --continue")
+	fs.BoolVar(&cfg.resume, "resume", false, "open the session picker at startup")
+	fs.BoolVar(&cfg.resume, "r", false, "shorthand for --resume")
 	fs.BoolVar(&cfg.noSession, "no-session", false, "run without persisting a session")
 	fs.BoolVar(&cfg.noMouse, "no-mouse", false, "disable mouse capture (wheel scrolling and in-app selection)")
 	fs.BoolVar(&cfg.debug, "debug", false, "write protocol diagnostics to the state directory")
@@ -236,7 +256,36 @@ func parseFlags(args []string, stderr io.Writer) (config, error) {
 	if fs.NArg() > 0 {
 		return cfg, fmt.Errorf("unexpected arguments: %v", fs.Args())
 	}
+	switch {
+	case cfg.continueLast && cfg.session != "":
+		return cfg, errors.New("--continue cannot be combined with --session")
+	case cfg.continueLast && cfg.resume:
+		return cfg, errors.New("--continue cannot be combined with --resume")
+	case cfg.continueLast && cfg.noSession:
+		return cfg, errors.New("--continue cannot be combined with --no-session")
+	case cfg.resume && cfg.session != "":
+		return cfg, errors.New("--resume cannot be combined with --session")
+	case cfg.resume && cfg.noSession:
+		return cfg, errors.New("--resume cannot be combined with --no-session")
+	}
 	return cfg, nil
+}
+
+// latestSession returns the newest session file for cwd, the same row the
+// resume picker shows first. No session found is not an error.
+func latestSession(sessionDir, cwd string) (string, error) {
+	dir, err := session.Dir(sessionDir)
+	if err != nil {
+		return "", err
+	}
+	entries, err := session.ListForCWD(dir, cwd, 1)
+	if err != nil {
+		return "", err
+	}
+	if len(entries) == 0 {
+		return "", nil
+	}
+	return entries[0].Path, nil
 }
 
 // resolvePi finds the pi executable without embedding anything.

@@ -76,6 +76,12 @@ the end by a long conversation. Broken files are skipped so one bad file cannot
 break the resume picker. `delete.go` is the only code here that writes session
 storage; the resume-picker section below explains when it runs.
 
+`cmd/pie` uses the same scan for `--continue`: it takes the first entry for the
+current directory and passes its path to the child as `--session`, so pi opens
+the conversation directly instead of starting a new one. `--resume` is a UI
+option instead; the model opens the `/resume` picker once the startup handshake
+has completed. Neither flag is forwarded to pi.
+
 ### `internal/ui`
 
 - `model.go` — the Bubble Tea model: state, message dispatch, layout, and the

@@ -174,7 +174,11 @@ make install
 ## Usage
 
 ```bash
-pie                           # resume is offered from the picker
+pie                           # start a new session
+pie --continue                # continue the newest session in this directory
+pie -c                        # shorthand for --continue
+pie --resume                  # open the session picker at startup
+pie -r                        # shorthand for --resume
 pie --model anthropic/claude-sonnet-4
 pie --no-session              # ephemeral, nothing is written to disk
 pie --session ~/.pi/agent/sessions/--Users-me-proj--/2024_x.jsonl
@@ -188,6 +192,12 @@ The agent directory is `PI_CODING_AGENT_DIR` when set, otherwise
 
 Flags are forwarded to pi where they overlap (`--provider`, `--model`, `--name`,
 `--session`, `--session-dir`, `--no-session`).
+
+`--continue` and `--resume` are handled by pie itself. Continuing opens the
+first session the picker would list for the current directory, and resumes that
+session on launch. Resuming starts the TUI with the same picker `/resume`
+opens. Both are mutually exclusive with `--session` and `--no-session`, and
+with each other.
 
 Mouse capture is on by default. `shift+drag` uses the terminal's native
 selection, and `/mouse` toggles capture. Clicking inside the composer places

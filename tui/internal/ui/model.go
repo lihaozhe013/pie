@@ -38,6 +38,8 @@ type Client interface {
 type Options struct {
 	// SessionDir overrides where the resume picker looks for sessions.
 	SessionDir string
+	// ResumePicker opens the session picker after the startup handshake.
+	ResumePicker bool
 	// CWD is the working directory shown for sessions without a recorded one.
 	CWD string
 	// Version is displayed in the help overlay.
@@ -385,6 +387,7 @@ type Model struct {
 	projectList    []session.Project
 	browseDir      string
 	sessionsAll    bool
+	resumePending  bool
 }
 
 // New builds the model around a connected client.
@@ -397,13 +400,14 @@ func New(client Client, opts Options) *Model {
 		paths, err = config.ResolvePaths()
 	}
 	m := &Model{
-		client:       client,
-		opts:         opts,
-		paths:        paths,
-		statuses:     map[string]string{},
-		showThinking: true,
-		mouseOn:      opts.Mouse,
-		copyFn:       opts.Copy,
+		client:        client,
+		opts:          opts,
+		paths:         paths,
+		statuses:      map[string]string{},
+		showThinking:  true,
+		mouseOn:       opts.Mouse,
+		copyFn:        opts.Copy,
+		resumePending: opts.ResumePicker,
 	}
 	if m.copyFn == nil {
 		m.copyFn = defaultCopyCommand()
@@ -1094,6 +1098,7 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	m.reloadCatalog()
 	m.completion.SetItems(m.commandItems())
 	m.loadHistory(msg.history)
+	resumeCmd := m.consumeResumePicker()
 	if m.pendingNotice != "" {
 		m.addNotice(m.pendingNotice)
 		m.pendingNotice = ""
@@ -1115,6 +1120,9 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 		if cmd := m.autoTitleFromHistory(msg.history); cmd != nil {
 			commands = append(commands, cmd)
 		}
+		if resumeCmd != nil {
+			commands = append(commands, resumeCmd)
+		}
 		return m, tea.Batch(commands...)
 	}
 
@@ -1125,7 +1133,20 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	if cmd := m.autoTitleFromHistory(msg.history); cmd != nil {
 		commands = append(commands, cmd)
 	}
+	if resumeCmd != nil {
+		commands = append(commands, resumeCmd)
+	}
 	return m, tea.Batch(commands...)
+}
+
+// consumeResumePicker returns the startup picker command exactly once, after
+// the handshake has supplied the state it renders.
+func (m *Model) consumeResumePicker() tea.Cmd {
+	if !m.resumePending {
+		return nil
+	}
+	m.resumePending = false
+	return m.listSessions()
 }
 
 // commandItems merges built-ins with the commands pi reported. A built-in alias
