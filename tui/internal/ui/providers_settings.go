@@ -372,6 +372,18 @@ func (m *Model) openProviderPanel(providerID string) {
 				Current: func() string { return currProv.API },
 			},
 		)
+		if currProv.BaseURL != "" {
+			rows = append(rows, settingsRow{
+				ID:    "provider-fetch-models",
+				Label: "Fetch models",
+				Kind:  settingsAction,
+				Help:  "Queries the endpoint to discover and enable all available models.",
+				Run: func(mm2 *Model, s *settingsState) tea.Cmd {
+					s.notice = "fetching models…"
+					return mm2.discoverModels(currProv.ID)
+				},
+			})
+		}
 		rows = append(rows, settingsRow{
 			ID:    "provider-add-model",
 			Label: "Add model",

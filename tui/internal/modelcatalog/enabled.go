@@ -116,6 +116,90 @@ func SetEnabled(patterns []string, patternsSet bool, models []*Model, ref string
 	return next, true
 }
 
+// SetModelsEnabled turns multiple models on or off with a minimal edit of the
+// pattern list, expanding patterns or batch-adding references.
+func SetModelsEnabled(patterns []string, patternsSet bool, models []*Model, refs []string, on bool) ([]string, bool) {
+	if len(refs) == 0 {
+		return patterns, patternsSet
+	}
+	if !patternsSet {
+		if on {
+			// All models are already enabled when enabledModels is unset.
+			return patterns, false
+		}
+		// Materialize all catalog models except the disabled refs.
+		disabled := make(map[string]bool, len(refs))
+		for _, r := range refs {
+			disabled[r] = true
+		}
+		out := make([]string, 0, len(models))
+		for _, m := range models {
+			if !disabled[m.Ref()] {
+				out = append(out, m.Ref())
+			}
+		}
+		return out, true
+	}
+
+	enabled, pins, _ := EnabledSet(patterns, patternsSet, models)
+	next := append([]string(nil), patterns...)
+	changed := false
+
+	if on {
+		providerRefs := make(map[string][]string)
+		for _, ref := range refs {
+			if !enabled[ref] {
+				parts := strings.SplitN(ref, "/", 2)
+				if len(parts) == 2 {
+					providerRefs[parts[0]] = append(providerRefs[parts[0]], ref)
+				}
+			}
+		}
+
+		providerTotal := make(map[string]int)
+		for _, m := range models {
+			providerTotal[m.ProviderID]++
+		}
+
+		addedProviders := make(map[string]bool)
+		for providerID, missingRefs := range providerRefs {
+			if len(missingRefs) == providerTotal[providerID] && providerTotal[providerID] > 0 {
+				next = append(next, providerID+"/*")
+				addedProviders[providerID] = true
+				changed = true
+			}
+		}
+
+		for _, ref := range refs {
+			parts := strings.SplitN(ref, "/", 2)
+			if len(parts) == 2 && addedProviders[parts[0]] {
+				continue
+			}
+			if !enabled[ref] {
+				entry := ref
+				if pin := pins[ref]; pin != "" {
+					entry += ":" + pin
+				}
+				next = append(next, entry)
+				enabled[ref] = true
+				changed = true
+			}
+		}
+	} else {
+		resPatterns := next
+		resSet := patternsSet
+		for _, ref := range refs {
+			resPatterns, resSet = SetEnabled(resPatterns, resSet, models, ref, false)
+		}
+		return resPatterns, resSet
+	}
+
+	if !changed {
+		return patterns, patternsSet
+	}
+	return next, true
+}
+
 // SetAllEnabled returns the pattern list for "every model on": no patterns.
 func SetAllEnabled() ([]string, bool) { return nil, false }
 

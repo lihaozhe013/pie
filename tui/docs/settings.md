@@ -128,12 +128,16 @@ The Providers page owns credentials, endpoints, and subscription usage:
   Models also writes this key.
 - Credentials: every built-in provider, including ones with no credential yet,
   with its sign-in state and model count. `Add provider` defines a compatible
-  endpoint in `models.json`.
+  endpoint in `models.json`, with an option to automatically discover and enable
+  all available models on save.
 - Provider entries: credential state, OAuth and API-key sign-in, base URL, API,
   and the provider's models. `Edit provider` exposes the compatibility
-  endpoint, API key, and a `pi auth check` readiness test. A custom provider or
-  model opens its editor; a catalog model opens a read-only summary with its
-  context window, output limit, reasoning support, and cost.
+  endpoint, API key, and a `pi auth check` readiness test. `Fetch models` queries
+  the provider's endpoint, adds all discovered models to `models.json`, enables
+  them by default in `settings.json`, and tells the running pi to reload without
+  restarting. A custom provider or model opens its editor; a catalog model opens
+  a read-only summary with its context window, output limit, reasoning support,
+  and cost.
 - Usage limits: rate-limit windows and balances queried from the provider's own
   endpoint. Supported providers are OpenAI Codex (5-hour and weekly windows),
   DeepSeek, OpenRouter, Moonshot AI and Moonshot AI CN, MiniMax and MiniMax CN

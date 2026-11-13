@@ -39,6 +39,25 @@ func (m *ModelsFile) Provider(id string) *Value {
 	return m.root.GetPath("providers", id)
 }
 
+// ProviderHeaders returns the configured custom headers for a provider, or nil.
+func (m *ModelsFile) ProviderHeaders(providerID string) map[string]string {
+	provider := m.Provider(providerID)
+	if provider == nil || !provider.IsObject() {
+		return nil
+	}
+	headersVal := provider.Get("headers")
+	if headersVal == nil || !headersVal.IsObject() {
+		return nil
+	}
+	headers := make(map[string]string, headersVal.Len())
+	for _, k := range headersVal.Keys() {
+		if s, ok := headersVal.Get(k).AsString(); ok {
+			headers[k] = s
+		}
+	}
+	return headers
+}
+
 // Update applies fn to a freshly loaded models.json and writes it back with
 // partial cost groups completed with zeros, as pie does.
 func (m *ModelsFile) Update(fn func(root *Value) error) error {
@@ -102,6 +121,44 @@ func (m *ModelsFile) SetModel(providerID string, model *Value) error {
 		UpsertModel(provider, model.Clone())
 		return nil
 	})
+}
+
+// UpsertModels merges or appends multiple models under a provider.
+func (m *ModelsFile) UpsertModels(providerID string, models []*Value) (added int, updated int, err error) {
+	if providerID == "" {
+		return 0, 0, errEmpty("provider id")
+	}
+	err = m.Update(func(root *Value) error {
+		provider := EnsureProvider(root, providerID)
+		modelsArr := provider.Get("models")
+		if modelsArr == nil || !modelsArr.IsArray() {
+			modelsArr = NewArray()
+			provider.Set("models", modelsArr)
+		}
+		for _, model := range models {
+			if model == nil || !model.IsObject() {
+				continue
+			}
+			id := model.Get("id").StringOr("")
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			existing := FindModel(provider, id)
+			if existing != nil {
+				for _, k := range model.Keys() {
+					if !existing.Has(k) {
+						existing.Set(k, model.Get(k).Clone())
+					}
+				}
+				updated++
+			} else {
+				modelsArr.Append(model.Clone())
+				added++
+			}
+		}
+		return nil
+	})
+	return added, updated, err
 }
 
 // DeleteModel removes a model from a provider.

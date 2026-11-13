@@ -722,11 +722,62 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.reloadConfig()
-		m.setToast("pi reloaded settings and instructions")
+		if !msg.silent {
+			m.setToast("pi reloaded settings and instructions")
+		}
 		if m.overlay != nil && m.overlay.kind == overlaySettings && m.settingsPanel != nil && !m.settingsPanel.detail {
 			m.openSettingsOverlay()
 		}
-		return m, tea.Batch(m.refreshState(), m.refreshCommands(), m.loadEntries(), m.loadToolSnapshot(), m.loadProviderAuth())
+		return m, tea.Batch(m.refreshState(), m.refreshCommands(), m.loadEntries(), m.loadToolSnapshot(), m.loadProviderAuth(), m.refreshAvailableModels())
+
+	case providerDiscoverMsg:
+		if msg.err != nil {
+			m.addError("discover models: " + msg.err.Error())
+			m.setToast("failed to fetch models for " + msg.providerID)
+			if m.settingsPanel != nil {
+				m.settingsPanel.notice = ""
+				m.settingsPanel.err = msg.err.Error()
+			}
+			return m, nil
+		}
+		if len(msg.models) == 0 {
+			m.setToast("no models found for " + msg.providerID)
+			if m.settingsPanel != nil {
+				m.settingsPanel.notice = "no models found"
+				m.settingsPanel.err = ""
+			}
+			return m, nil
+		}
+
+		if m.modelsFile != nil {
+			values := make([]*config.Value, len(msg.models))
+			for i, mod := range msg.models {
+				values[i] = mod.ToConfigValue()
+			}
+			_, _, _ = m.modelsFile.UpsertModels(msg.providerID, values)
+		}
+		m.reloadConfig()
+
+		if m.settings != nil {
+			patterns, present, err := m.settings.EnabledModels()
+			if err == nil && present {
+				refs := make([]string, len(msg.models))
+				for i, mod := range msg.models {
+					refs[i] = msg.providerID + "/" + mod.ID
+				}
+				newPatterns, newSet := modelcatalog.SetModelsEnabled(patterns, present, m.catalog.Models(), refs, true)
+				if newSet {
+					_ = m.settings.SetEnabledModels(newPatterns)
+				} else {
+					_ = m.settings.ClearEnabledModels()
+				}
+			}
+		}
+
+		notice := fmt.Sprintf("fetched and enabled %d models for %s", len(msg.models), msg.providerID)
+		m.setToast(notice)
+		m.returnToProvider(msg.providerID, notice)
+		return m, m.syncRuntimeModels()
 
 	case commandsMsg:
 		if msg.err != nil {

@@ -1,13 +1,16 @@
 package ui
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/lihaozhe013/pie/tui/internal/config"
+	"github.com/lihaozhe013/pie/tui/internal/modelcatalog"
 )
 
 // providerAPIs are the API ids pi accepts for a custom endpoint.
@@ -31,6 +34,7 @@ type providerDraft struct {
 	BaseURL    string
 	API        string
 	APIKey     string
+	AutoFetch  bool
 	confirmDel bool
 }
 
@@ -55,7 +59,13 @@ type modelDraft struct {
 
 // providerDraftFrom copies a provider's current values into an editable draft.
 func (m *Model) providerDraftFrom(providerID string, isNew bool) *providerDraft {
-	draft := &providerDraft{ID: providerID, IsNew: isNew, Custom: isNew, API: "openai-completions"}
+	draft := &providerDraft{
+		ID:        providerID,
+		IsNew:     isNew,
+		Custom:    isNew,
+		API:       "openai-completions",
+		AutoFetch: isNew,
+	}
 	provider := m.catalog.Provider(providerID)
 	if provider != nil && !isNew {
 		draft.Name = provider.Name
@@ -179,6 +189,17 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 				return nil
 			},
 		},
+		{
+			ID:    "provider-autofetch",
+			Label: "Auto-fetch models on save",
+			Help:  "Queries the endpoint on save to automatically add and enable all available models.",
+			Kind:  settingsToggle,
+			Bool:  func() bool { return draft.AutoFetch },
+			SetBool: func(on bool) error {
+				draft.AutoFetch = on
+				return nil
+			},
+		},
 	}
 
 	if !draft.IsNew {
@@ -229,12 +250,31 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 				return nil
 			}
 			m.reloadConfig()
+			if draft.AutoFetch && draft.BaseURL != "" {
+				s.notice = "provider saved; fetching models…"
+				return tea.Batch(
+					m.syncRuntimeModels(),
+					m.discoverModels(draft.ID),
+				)
+			}
 			m.returnToProvider(draft.ID, "provider saved")
-			return nil
+			return m.syncRuntimeModels()
 		},
 	})
 
 	if !draft.IsNew {
+		if draft.BaseURL != "" {
+			rows = append(rows, settingsRow{
+				ID:    "provider-fetch-models",
+				Label: "Fetch models",
+				Kind:  settingsAction,
+				Help:  "Queries the endpoint to discover and enable all available models.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					s.notice = "fetching models…"
+					return m.discoverModels(draft.ID)
+				},
+			})
+		}
 		rows = append(rows, settingsRow{
 			ID:    "provider-add-model",
 			Label: "Add model",
@@ -264,7 +304,7 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 					return nil
 				}
 				m.reloadConfig()
-				return m.returnToProviders("provider deleted")
+				return tea.Batch(m.returnToProviders("provider deleted"), m.syncRuntimeModels())
 			},
 		})
 	}
@@ -588,7 +628,7 @@ func (m *Model) showModelEditor(draft *modelDraft) {
 				}
 				m.reloadConfig()
 				m.returnToProvider(draft.ProviderID, "model deleted")
-				return nil
+				return m.syncRuntimeModels()
 			},
 		})
 	}
@@ -611,8 +651,15 @@ func (m *Model) saveModelAction(draft *modelDraft, s *settingsState) tea.Cmd {
 		return nil
 	}
 	m.reloadConfig()
+	if m.settings != nil {
+		if patterns, present, err := m.settings.EnabledModels(); err == nil && present {
+			ref := draft.ProviderID + "/" + draft.ID
+			newPatterns, _ := modelcatalog.SetEnabled(patterns, present, m.catalog.Models(), ref, true)
+			_ = m.settings.SetEnabledModels(newPatterns)
+		}
+	}
 	m.returnToProvider(draft.ProviderID, "model saved")
-	return nil
+	return m.syncRuntimeModels()
 }
 
 // openThinkingLevelsEditor toggles the reasoning levels a model offers. A level
@@ -828,4 +875,64 @@ func (m *Model) providerModelAction(providerID, modelID string) {
 		return
 	}
 	m.openModelPanel(providerID, modelID)
+}
+
+type providerDiscoverMsg struct {
+	providerID string
+	models     []modelcatalog.DiscoveredModel
+	err        error
+}
+
+func (m *Model) discoverModels(providerID string) tea.Cmd {
+	provider := m.catalog.Provider(providerID)
+	baseURL := ""
+	api := "openai-completions"
+	apiKey := ""
+	var headers map[string]string
+
+	if provider != nil {
+		baseURL = provider.BaseURL
+		if provider.API != "" {
+			api = provider.API
+		}
+		apiKey = provider.APIKey
+	}
+	if m.modelsFile != nil {
+		if entry := m.modelsFile.Provider(providerID); entry != nil {
+			baseURL = entry.Get("baseUrl").StringOr(baseURL)
+			api = entry.Get("api").StringOr(api)
+			apiKey = entry.Get("apiKey").StringOr(apiKey)
+			headers = m.modelsFile.ProviderHeaders(providerID)
+		}
+	}
+
+	cfg := modelcatalog.DiscoveryConfig{
+		ProviderID: providerID,
+		BaseURL:    baseURL,
+		API:        api,
+		APIKey:     apiKey,
+		Headers:    headers,
+	}
+	paths := m.paths
+
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+		defer cancel()
+		models, err := modelcatalog.DiscoverModels(ctx, cfg, paths)
+		return providerDiscoverMsg{
+			providerID: providerID,
+			models:     models,
+			err:        err,
+		}
+	}
+}
+
+// syncRuntimeModels tells pi to reload configuration if ready and refreshes available models.
+func (m *Model) syncRuntimeModels() tea.Cmd {
+	var cmds []tea.Cmd
+	if !m.busy && m.bridgeReady {
+		cmds = append(cmds, m.reloadPiSilent())
+	}
+	cmds = append(cmds, m.refreshAvailableModels())
+	return tea.Batch(cmds...)
 }
