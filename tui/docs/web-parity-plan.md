@@ -112,7 +112,7 @@ Sizes: S under a day-equivalent, M a day-equivalent, L several, XL the largest.
 | Branches and forks | `components/BranchNavigator.tsx`, `SessionTree.tsx` | none | RPC already has `get_tree`, `fork`, `clone` | M |
 | Session search | `components/SessionSearch.tsx` | none | Local scan plus filter | S |
 | Statistics | `components/SessionStatsModal.tsx` | `/stats` text | Dedicated panel | S |
-| Image attachments | `lib/image-attachments.ts` | protocol supports images | `/image` command | S |
+| Image attachments | `lib/image-attachments.ts`, `lib/file-upload-client.ts` | protocol supports images | `/image`, `/paste-image` | S |
 | System prompt, tool definitions | `SystemPromptPanel.tsx`, `ToolDefinitionsPanel.tsx` | none | Bridge extension publish command | M |
 | Tasks, queue, autonomous | task workspace | none | Excluded | - |
 | Drag and drop | `hooks/useDragDrop.ts` | none | Excluded | - |
@@ -425,6 +425,9 @@ the full suite is not run.
 - Branch and tree navigation through `get_tree`, `fork`, `clone`.
 - Session search and a statistics panel.
 - `/image` attachment through the existing image prompt support.
+- `/paste-image` for clipboard screenshots: save the picture into the working
+  directory and insert the `@path` mention, matching the Web composer's paste
+  path.
 - System prompt and tool definitions panel fed by `/pie-publish`.
 - Acceptance: manual walkthrough of each surface.
 

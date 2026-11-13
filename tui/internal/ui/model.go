@@ -977,6 +977,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case pastedImageMsg:
+		if msg.err != nil {
+			m.setToast("paste image failed: " + msg.err.Error())
+			return m, nil
+		}
+		// The file already sits in the working directory; only its @ mention
+		// travels with the prompt, exactly like a file attached in the web
+		// composer. The mention stays editable text in the prompt.
+		m.composer.InsertMention("@" + msg.name)
+		m.completion.Refresh(m.composer.Value())
+		m.layout()
+		m.setToast("pasted image as " + msg.name)
+		return m, nil
+
 	case autoTitleRetryMsg:
 		if msg.sessionID == "" || msg.sessionID != m.state.SessionID || m.state.SessionName != "" ||
 			m.titleRunning || !m.autoTitlePending {

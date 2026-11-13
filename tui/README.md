@@ -50,6 +50,9 @@ subagents, no second agent loop, no parallel protocol.
 - `/paste` reads the system clipboard directly into the prompt, so multi-line
   text stays editable and a pasted newline can never submit the message; it is
   the fallback for terminals without bracketed paste
+- `/paste-image` copies a clipboard image into the working directory as
+  `pasted-<timestamp>-<n>.<ext>` and inserts its `@` reference into the prompt,
+  so the agent reads it like a file dropped into the Web UI
 - A live blue activity bar above the composer names the current wait, thinking
   block, tool call, retry, or compaction, with a pulsing marker, an `Elapsed`
   clock, a `~N tokens` estimate of the block being written, and a live `t/s`
@@ -124,7 +127,10 @@ subagents, no second agent loop, no parallel protocol.
   active state and descriptions, system-prompt size, work mode, and a pager
   view of the prompt
 - Image attachments through `/image <path> [prompt]`: the file is read,
-  base64-encoded, and sent with the prompt through pi's existing image support
+  base64-encoded, and sent with the prompt through pi's existing image support.
+  `/paste-image` handles screenshots the other way: it copies the clipboard
+  image into the working directory and references it by path, the same
+  "copy and reference" path the Web UI uses for pasted pictures
 - Project switching with `/cwd [dir]`: a recent-project picker derived from
   session headers, a directory browser, and `/cwd <path>` for direct entry.
   Switching restarts pi in the new folder and starts a fresh session there.
@@ -211,6 +217,13 @@ The text never passes through the terminal's key parser, so newlines become
 literal line breaks in the prompt and cannot trigger a send even when the
 terminal lacks bracketed paste.
 
+`/paste-image` reads the same clipboard as an image. Windows and WSL use
+PowerShell, macOS uses `pngpaste` when installed and `osascript` otherwise, and
+Linux uses `wl-paste` or `xclip`. The picture is written into the working
+directory under a timestamped name that never replaces an existing file, and
+its `@` mention lands at the caret. Termux and remote sessions cannot read a
+local image clipboard, so `/image <path>` remains the fallback there.
+
 ## Key bindings
 
 | Key | Action |
@@ -291,6 +304,7 @@ memory from other CLIs keeps working.
 | `/cwd` | `/dir`, `/project` | switch working directory; no argument opens the project picker |
 | `/image` | | attach a local image to a prompt (`/image shot.png what is this?`) |
 | `/paste` | | paste the system clipboard into the prompt as text |
+| `/paste-image` | | save a clipboard image into the working directory and insert its `@` reference |
 | `/context` | `/tools-view` | system prompt and tool definitions published by the bridge |
 | `/search` | | search session names, folders, and transcripts |
 | `/fork` | | fork from a user message; the prompt returns to the editor |

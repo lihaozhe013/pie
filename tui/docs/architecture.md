@@ -120,6 +120,11 @@ has completed. Neither flag is forwarded to pi.
   Reads and writes run asynchronously so a slow clipboard tool cannot stall the
   event loop. `/paste` inserts the sanitized result at the caret without routing
   it through key handling, so pasted newlines never submit a prompt.
+- `clipboard_image.go` — the same shell-out design for images: PowerShell on
+  Windows and WSL, `pngpaste` or `osascript` on macOS, `wl-paste` or `xclip` on
+  Linux. `/paste-image` writes the bytes into the working directory under a
+  timestamped, never-overwriting `pasted-` name and leaves the `@` mention in
+  the prompt, the reference the Web UI's attachment chips also send.
 - `input.go` — the prompt editor and slash completion. The editor is written
   directly against the buffer instead of nesting `bubbles/textarea`: the
   widget paints a full-line cursor background, moves across logical lines and
@@ -357,6 +362,11 @@ sends `prompt` with an `images` array. A turn must be idle first, because the
 RPC follow-up command cannot carry images. The transcript shows a text
 placeholder, matching how the web composer labels an attachment.
 
+`/paste-image` does not send anything: it copies a clipboard picture into the
+working directory (capped at the same 20 MB) and inserts `@pasted-....png`, so
+the agent reads the file from disk on its own turn. That keeps the screenshot
+editable with the rest of the prompt and works for models without image input.
+
 The working directory is the child process's `Dir`, fixed for the life of one
 pi process. `/cwd` therefore restarts the child: it closes the old stdin,
 starts a fresh pi with the same binary, flags, and bridge extension but no
@@ -468,7 +478,13 @@ PIE_E2E_BIN=$(command -v pi) go test ./internal/rpc -run TestRealPi -v
 
 ## Known limitations
 
-- No image or file attachments yet; prompts are text only.
+- Clipboard images are saved as files and referenced, not displayed: the
+  terminal shows only the `@pasted-...` mention.
+- `/paste-image` reads the clipboard of the machine running `pie`. Over SSH or
+  in tmux it cannot see the local machine's clipboard, and Termux exposes text
+  only; `/image <path>` covers those cases.
+- A pasted reference is relative to the working directory. Switching projects
+  after pasting leaves the mention pointing at the old folder.
 - Extension `setWidget` output is folded into the status line instead of a
   dedicated panel.
 - The diff view is prefix/suffix based. It is exact for edit tools' replacement

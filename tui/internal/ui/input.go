@@ -157,6 +157,21 @@ func (c *composer) InsertText(text string) {
 	c.insert(text)
 }
 
+// InsertMention adds one @reference at the caret. A separator goes in when the
+// caret follows a word, because a mention is a token only after whitespace;
+// the trailing space closes it so typing continues after the reference.
+func (c *composer) InsertMention(reference string) {
+	separator := ""
+	if c.cursor > 0 && c.cursor <= len(c.value) {
+		switch c.value[c.cursor-1] {
+		case ' ', '\t', '\n':
+		default:
+			separator = " "
+		}
+	}
+	c.InsertText(separator + reference + " ")
+}
+
 func (c *composer) InsertNewline() {
 	c.insert("\n")
 }
