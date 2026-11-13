@@ -115,7 +115,17 @@ func (m *Model) openDirectoryPicker(start string) tea.Cmd {
 		items = append(items, pickerItem{Value: path, Label: filepath.Base(path) + "/", Detail: shortenPath(path)})
 	}
 	m.browseDir = absolute
+	previous := m.overlay
+	var returnTo *overlay
+	if previous != nil {
+		if previous.returnTo != nil {
+			returnTo = previous.returnTo
+		} else if previous.action == "project" {
+			returnTo = previous
+		}
+	}
 	overlay := newPickerOverlay("cwd-browse", "Directory · "+shortenPath(absolute), items)
+	overlay.returnTo = returnTo
 	m.openOverlay(overlay)
 	return nil
 }

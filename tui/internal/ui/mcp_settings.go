@@ -169,184 +169,199 @@ func (m *Model) mcpSettingsTab() settingsTab {
 }
 
 func (m *Model) openMCPAddInput(local bool) tea.Cmd {
-	base := &rpc.ExtensionUIRequestEvent{
-		Title:       "Add MCP server",
-		Method:      "input",
-		Placeholder: "name -- npx -y @modelcontextprotocol/server-filesystem /tmp",
-		Message:     "For an HTTP server: name --url https://example.com/mcp",
-	}
-	overlay := newInputOverlay(base)
-	if local {
-		overlay.action = "mcp-add-local"
-	} else {
-		overlay.action = "mcp-add-global"
-	}
-	m.openOverlay(overlay)
+	m.openOverlayFromSettings(func() {
+		base := &rpc.ExtensionUIRequestEvent{
+			Title:       "Add MCP server",
+			Method:      "input",
+			Placeholder: "name -- npx -y @modelcontextprotocol/server-filesystem /tmp",
+			Message:     "For an HTTP server: name --url https://example.com/mcp",
+		}
+		overlay := newInputOverlay(base)
+		if local {
+			overlay.action = "mcp-add-local"
+		} else {
+			overlay.action = "mcp-add-global"
+		}
+		m.openOverlay(overlay)
+	})
 	return nil
 }
 
 func (m *Model) openMCPServer(server config.MCPServer, scope string) tea.Cmd {
-	if scope == "project" {
-		if err := m.projectWriteRefusal(true); err != nil {
-			tab := settingsTab{ID: "mcp-server", Label: "Server", Note: server.Name}
-			tab.Rows = []settingsRow{
-				{ID: "mcp-name", Label: "Name", Kind: settingsInfo, Current: func() string { return server.Name }},
-				{ID: "mcp-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return "project" }},
-				{ID: "mcp-trust", Label: "Status", Kind: settingsInfo, Current: func() string { return "read only" }, Help: err.Error()},
-				{ID: "mcp-back", Label: "Back", Kind: settingsAction, Run: func(m *Model, s *settingsState) tea.Cmd {
-					return m.openSettingsAt("mcp")
-				}},
-			}
-			panel := newSettingsPanel("Server · "+server.Name, []settingsTab{tab})
-			panel.action = "mcp-detail"
-			panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("mcp") }
-			m.showPage(panel)
-			return nil
-		}
-	}
-	enabled := server.Enabled
-	exposure := server.Exposure
-	if exposure == "" {
-		exposure = "auto"
-	}
-	armed := false
-	file := func() (*config.MCPFile, error) {
+	build := func(mm *Model) []settingsTab {
 		if scope == "project" {
-			return config.LoadProjectMCP(m.opts.CWD)
+			if err := mm.projectWriteRefusal(true); err != nil {
+				tab := settingsTab{ID: "mcp-server", Label: "Server", Note: server.Name}
+				tab.Rows = []settingsRow{
+					{ID: "mcp-name", Label: "Name", Kind: settingsInfo, Current: func() string { return server.Name }},
+					{ID: "mcp-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return "project" }},
+					{ID: "mcp-trust", Label: "Status", Kind: settingsInfo, Current: func() string { return "read only" }, Help: err.Error()},
+					{ID: "mcp-back", Label: "Back", Kind: settingsAction, Run: func(m *Model, s *settingsState) tea.Cmd {
+						return m.popSettingsPanel("mcp")
+					}},
+				}
+				return []settingsTab{tab}
+			}
 		}
-		return config.LoadMCP(m.paths)
-	}
-	save := func(fn func(*config.MCPFile) error) error {
-		current, err := file()
-		if err != nil {
-			return err
+
+		global, project, _ := mm.mcpServerList()
+		currentServer := server
+		allServers := global
+		if scope == "project" {
+			allServers = project
 		}
-		return fn(current)
+		for _, s := range allServers {
+			if s.Name == server.Name {
+				currentServer = s
+				break
+			}
+		}
+		server = currentServer
+		enabled := server.Enabled
+		exposure := server.Exposure
+		if exposure == "" {
+			exposure = "auto"
+		}
+		armed := false
+		file := func() (*config.MCPFile, error) {
+			if scope == "project" {
+				return config.LoadProjectMCP(mm.opts.CWD)
+			}
+			return config.LoadMCP(mm.paths)
+		}
+		save := func(fn func(*config.MCPFile) error) error {
+			current, err := file()
+			if err != nil {
+				return err
+			}
+			return fn(current)
+		}
+
+		tab := settingsTab{ID: "mcp-server", Label: "Server", Note: server.Name}
+		tab.Rows = []settingsRow{
+			{ID: "mcp-name", Label: "Name", Kind: settingsInfo, Current: func() string { return server.Name }},
+			{ID: "mcp-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return scope }},
+			{ID: "mcp-transport", Label: "Transport", Kind: settingsInfo, Current: func() string { return server.Transport() }},
+			{ID: "mcp-description", Label: "Description", Kind: settingsInfo, Current: func() string {
+				if server.Description == "" {
+					return "(none)"
+				}
+				return server.Description
+			}},
+			{ID: "mcp-env", Label: "Environment", Kind: settingsInfo, Help: "Names only; values stay in mcp.json.", Current: func() string {
+				return maskedSecrets(server.Env)
+			}},
+			{ID: "mcp-headers", Label: "Headers", Kind: settingsInfo, Help: "Names only; values stay in mcp.json.", Current: func() string {
+				return maskedSecrets(server.Headers)
+			}},
+			{
+				ID:    "mcp-enabled",
+				Label: "Enabled",
+				Kind:  settingsToggle,
+				Bool:  func() bool { return enabled },
+				SetBool: func(on bool) error {
+					if err := save(func(f *config.MCPFile) error { return f.SetServerEnabled(server.Name, on) }); err != nil {
+						return err
+					}
+					enabled = on
+					return nil
+				},
+			},
+			{
+				ID:      "mcp-exposure",
+				Label:   "Exposure",
+				Kind:    settingsChoice,
+				Current: func() string { return exposure },
+				Choices: mcpExposureChoices(),
+				Apply: func(value string) error {
+					if err := save(func(f *config.MCPFile) error { return f.SetServerExposure(server.Name, value) }); err != nil {
+						return err
+					}
+					exposure = value
+					return nil
+				},
+			},
+			{
+				ID:    "mcp-check-one",
+				Label: "Check connections",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					m.setToast("checking MCP servers…")
+					return m.checkMCP()
+				},
+			},
+			{
+				ID:    "mcp-login",
+				Label: "Sign in",
+				Kind:  settingsAction,
+				Help:  "Opens the browser OAuth flow for HTTP servers that use OAuth.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					m.setToast("starting MCP sign-in for " + server.Name + "…")
+					return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
+						return mcp.Login(ctx, bin, cwd, server.Name, scope == "project")
+					}, "signed in to "+server.Name)
+				},
+			},
+			{
+				ID:    "mcp-logout",
+				Label: "Sign out",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
+						return mcp.Logout(ctx, bin, cwd, server.Name, scope == "project")
+					}, "signed out of "+server.Name)
+				},
+			},
+			{
+				ID:    "mcp-remove",
+				Label: "Remove server",
+				Kind:  settingsAction,
+				Help:  "Press enter twice to confirm.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					if !armed {
+						armed = true
+						s.notice = "press enter again to remove " + server.Name
+						return nil
+					}
+					return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
+						return mcp.Remove(ctx, bin, cwd, server.Name, scope == "project")
+					}, "removed "+server.Name)
+				},
+			},
+			{
+				ID:    "mcp-back",
+				Label: "Back",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.popSettingsPanel("mcp")
+				},
+			},
+		}
+		if status, ok := mm.mcpStatusFor(server.Name); ok {
+			stateRow := settingsRow{
+				ID:    "mcp-state",
+				Label: "State",
+				Kind:  settingsInfo,
+				Current: func() string {
+					if status.Error != "" {
+						return status.State + " · " + status.Error
+					}
+					if len(status.Tools) > 0 {
+						return fmt.Sprintf("%s · %d tools", status.State, len(status.Tools))
+					}
+					return status.State
+				},
+			}
+			rows := append([]settingsRow{}, tab.Rows[:4]...)
+			rows = append(rows, stateRow)
+			tab.Rows = append(rows, tab.Rows[4:]...)
+		}
+		return []settingsTab{tab}
 	}
 
-	tab := settingsTab{ID: "mcp-server", Label: "Server", Note: server.Name}
-	tab.Rows = []settingsRow{
-		{ID: "mcp-name", Label: "Name", Kind: settingsInfo, Current: func() string { return server.Name }},
-		{ID: "mcp-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return scope }},
-		{ID: "mcp-transport", Label: "Transport", Kind: settingsInfo, Current: func() string { return server.Transport() }},
-		{ID: "mcp-description", Label: "Description", Kind: settingsInfo, Current: func() string {
-			if server.Description == "" {
-				return "(none)"
-			}
-			return server.Description
-		}},
-		{ID: "mcp-env", Label: "Environment", Kind: settingsInfo, Help: "Names only; values stay in mcp.json.", Current: func() string {
-			return maskedSecrets(server.Env)
-		}},
-		{ID: "mcp-headers", Label: "Headers", Kind: settingsInfo, Help: "Names only; values stay in mcp.json.", Current: func() string {
-			return maskedSecrets(server.Headers)
-		}},
-		{
-			ID:    "mcp-enabled",
-			Label: "Enabled",
-			Kind:  settingsToggle,
-			Bool:  func() bool { return enabled },
-			SetBool: func(on bool) error {
-				if err := save(func(f *config.MCPFile) error { return f.SetServerEnabled(server.Name, on) }); err != nil {
-					return err
-				}
-				enabled = on
-				return nil
-			},
-		},
-		{
-			ID:      "mcp-exposure",
-			Label:   "Exposure",
-			Kind:    settingsChoice,
-			Current: func() string { return exposure },
-			Choices: mcpExposureChoices(),
-			Apply: func(value string) error {
-				if err := save(func(f *config.MCPFile) error { return f.SetServerExposure(server.Name, value) }); err != nil {
-					return err
-				}
-				exposure = value
-				return nil
-			},
-		},
-		{
-			ID:    "mcp-check-one",
-			Label: "Check connections",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				m.setToast("checking MCP servers…")
-				return m.checkMCP()
-			},
-		},
-		{
-			ID:    "mcp-login",
-			Label: "Sign in",
-			Kind:  settingsAction,
-			Help:  "Opens the browser OAuth flow for HTTP servers that use OAuth.",
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				m.setToast("starting MCP sign-in for " + server.Name + "…")
-				return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
-					return mcp.Login(ctx, bin, cwd, server.Name, scope == "project")
-				}, "signed in to "+server.Name)
-			},
-		},
-		{
-			ID:    "mcp-logout",
-			Label: "Sign out",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
-					return mcp.Logout(ctx, bin, cwd, server.Name, scope == "project")
-				}, "signed out of "+server.Name)
-			},
-		},
-		{
-			ID:    "mcp-remove",
-			Label: "Remove server",
-			Kind:  settingsAction,
-			Help:  "Press enter twice to confirm.",
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				if !armed {
-					armed = true
-					s.notice = "press enter again to remove " + server.Name
-					return nil
-				}
-				return m.runMCPCommand(func(ctx context.Context, bin, cwd string) (string, error) {
-					return mcp.Remove(ctx, bin, cwd, server.Name, scope == "project")
-				}, "removed "+server.Name)
-			},
-		},
-		{
-			ID:    "mcp-back",
-			Label: "Back",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.openSettingsAt("mcp")
-			},
-		},
-	}
-	if status, ok := m.mcpStatusFor(server.Name); ok {
-		stateRow := settingsRow{
-			ID:    "mcp-state",
-			Label: "State",
-			Kind:  settingsInfo,
-			Current: func() string {
-				if status.Error != "" {
-					return status.State + " · " + status.Error
-				}
-				if len(status.Tools) > 0 {
-					return fmt.Sprintf("%s · %d tools", status.State, len(status.Tools))
-				}
-				return status.State
-			},
-		}
-		rows := append([]settingsRow{}, tab.Rows[:4]...)
-		rows = append(rows, stateRow)
-		tab.Rows = append(rows, tab.Rows[4:]...)
-	}
-	panel := newSettingsPanel("MCP · "+server.Name, []settingsTab{tab})
-	panel.action = "mcp-detail"
-	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("mcp") }
-	m.showPage(panel)
+	state := m.pushSettingsPanel("mcp", "Server · "+server.Name, build)
+	state.action = "mcp-detail"
+	m.showPage(state)
 	return nil
 }
 
@@ -425,7 +440,8 @@ func (m *Model) addMCP(arguments string, local bool) tea.Cmd {
 func (m *Model) applyMCPCheck(msg mcpCheckMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.addError("mcp: " + msg.err.Error())
-		return m, m.openSettingsAt("mcp")
+		m.openSettingsOverlay()
+		return m, nil
 	}
 	m.mcpSnapshot = msg.snapshot
 	m.mcpChecked = true
@@ -434,14 +450,17 @@ func (m *Model) applyMCPCheck(msg mcpCheckMsg) (tea.Model, tea.Cmd) {
 	} else {
 		m.setToast(fmt.Sprintf("%d MCP server(s) checked", len(msg.snapshot.Servers)))
 	}
-	return m, m.openSettingsAt("mcp")
+	m.openSettingsOverlay()
+	return m, nil
 }
 
 func (m *Model) applyMCPAction(msg mcpActionMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.addError("mcp: " + msg.err.Error())
-		return m, m.openSettingsAt("mcp")
+		m.openSettingsOverlay()
+		return m, nil
 	}
 	m.setToast(msg.summary)
-	return m, m.openSettingsAt("mcp")
+	m.openSettingsOverlay()
+	return m, nil
 }

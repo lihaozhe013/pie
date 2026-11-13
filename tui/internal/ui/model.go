@@ -942,7 +942,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			m.addError("edit skill: " + msg.err.Error())
 		}
-		return m, m.openSettingsAt("skills")
+		m.openSettingsOverlay()
+		return m, nil
 
 	case copiedMsg:
 		if msg.err != nil {

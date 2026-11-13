@@ -229,10 +229,7 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 				return nil
 			}
 			m.reloadConfig()
-			m.openProviderPanel(draft.ID)
-			if m.settingsPanel != nil {
-				m.settingsPanel.notice = "provider saved"
-			}
+			m.returnToProvider(draft.ID, "provider saved")
 			return nil
 		},
 	})
@@ -267,16 +264,19 @@ func (m *Model) openProviderEditor(providerID string, isNew bool) {
 					return nil
 				}
 				m.reloadConfig()
-				cmd := m.openSettingsAt("providers")
-				if m.settingsPanel != nil {
-					m.settingsPanel.notice = "provider deleted"
-				}
-				return cmd
+				return m.returnToProviders("provider deleted")
 			},
 		})
 	}
 
-	m.openProvidersPanel("Provider: "+providerLabel(draft), rows)
+	state := m.pushProvidersPanel("Provider: "+providerLabel(draft), nil)
+	state.tabs = []settingsTab{{
+		ID:    "panel",
+		Label: "Provider: " + providerLabel(draft),
+		Rows:  rows,
+	}}
+	state.clampSelection()
+	m.showPage(state)
 }
 
 func providerLabel(draft *providerDraft) string {
@@ -587,16 +587,20 @@ func (m *Model) showModelEditor(draft *modelDraft) {
 					return nil
 				}
 				m.reloadConfig()
-				m.openProviderPanel(draft.ProviderID)
-				if m.settingsPanel != nil {
-					m.settingsPanel.notice = "model deleted"
-				}
+				m.returnToProvider(draft.ProviderID, "model deleted")
 				return nil
 			},
 		})
 	}
 
-	m.openProvidersPanel("Model: "+draft.ID, rows)
+	state := m.pushProvidersPanel("Model: "+draft.ID, nil)
+	state.tabs = []settingsTab{{
+		ID:    "panel",
+		Label: "Model: " + draft.ID,
+		Rows:  rows,
+	}}
+	state.clampSelection()
+	m.showPage(state)
 }
 
 // saveModelAction writes the draft and leaves its form for the provider panel.
@@ -607,10 +611,7 @@ func (m *Model) saveModelAction(draft *modelDraft, s *settingsState) tea.Cmd {
 		return nil
 	}
 	m.reloadConfig()
-	m.openProviderPanel(draft.ProviderID)
-	if m.settingsPanel != nil {
-		m.settingsPanel.notice = "model saved"
-	}
+	m.returnToProvider(draft.ProviderID, "model saved")
 	return nil
 }
 
@@ -667,19 +668,64 @@ func (m *Model) openThinkingLevelsEditor(draft *modelDraft) {
 			return m.saveModelAction(draft, s)
 		},
 	})
-	// Esc returns to the model form with the same draft, so levels can be
-	// reviewed before saving instead of being dropped with the panel.
-	state := newSettingsPanel("Thinking levels: "+draft.ID, []settingsTab{{
+	state := m.pushProvidersPanel("Thinking levels: "+draft.ID, nil)
+	state.tabs = []settingsTab{{
 		ID:    "panel",
 		Label: "Thinking levels: " + draft.ID,
 		Rows:  rows,
-	}})
-	state.action = "settings-panel"
-	state.back = func(mm *Model) tea.Cmd {
-		mm.showModelEditor(draft)
-		return nil
-	}
+	}}
+	state.clampSelection()
 	m.showPage(state)
+}
+
+func (m *Model) returnToProvider(providerID, notice string) {
+	m.reloadConfig()
+	curr := m.settingsPanel
+	for curr != nil && curr.parent != nil {
+		curr = curr.parent
+		if curr.providerID == providerID {
+			curr.rebuild(m)
+			curr.notice = notice
+			m.showPage(curr)
+			return
+		}
+	}
+	top := m.settingsPanel
+	for top != nil && top.parent != nil {
+		top = top.parent
+		if !top.detail && top.page.ID == pageProviders {
+			break
+		}
+	}
+	if top == nil || top.detail || top.page.ID != pageProviders {
+		top = newPageState(m.buildPage(pageProviders))
+	} else {
+		top.rebuild(m)
+	}
+	m.settingsPanel = top
+	m.openProviderPanel(providerID)
+	if m.settingsPanel != nil {
+		m.settingsPanel.notice = notice
+	}
+}
+
+func (m *Model) returnToProviders(notice string) tea.Cmd {
+	m.reloadConfig()
+	curr := m.settingsPanel
+	for curr != nil && curr.parent != nil {
+		curr = curr.parent
+		if !curr.detail && curr.page.ID == pageProviders {
+			curr.rebuild(m)
+			curr.notice = notice
+			m.showPage(curr)
+			return tea.Batch(m.loadEntries(), m.loadToolSnapshot())
+		}
+	}
+	cmd := m.openSettingsAt(pageProviders)
+	if m.settingsPanel != nil {
+		m.settingsPanel.notice = notice
+	}
+	return cmd
 }
 
 func (m *Model) saveModelDraft(draft *modelDraft) error {

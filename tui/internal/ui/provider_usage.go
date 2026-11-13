@@ -114,7 +114,7 @@ func (m *Model) applyProviderUsage(msg providerUsageMsg) {
 		}
 	}
 	if m.overlay != nil && m.overlay.action == "settings-panel" && m.panelUsageProvider == msg.providerID {
-		m.openProviderUsagePanel(msg.providerID)
+		m.openSettingsOverlay()
 	}
 }
 
@@ -196,28 +196,31 @@ func compactUsageBucket(bucket providerusage.Bucket) string {
 
 // openProviderUsageList lists every provider that can answer a usage query.
 func (m *Model) openProviderUsageList() {
-	rows := make([]settingsRow, 0, len(providerusage.SupportedIDs))
-	for _, providerID := range providerusage.SupportedIDs {
-		if m.catalog != nil && m.catalog.Provider(providerID) == nil {
-			continue
+	build := func(mm *Model) []settingsTab {
+		rows := make([]settingsRow, 0, len(providerusage.SupportedIDs))
+		for _, providerID := range providerusage.SupportedIDs {
+			if mm.catalog != nil && mm.catalog.Provider(providerID) == nil {
+				continue
+			}
+			providerID := providerID
+			rows = append(rows, settingsRow{
+				ID:      "usage-" + providerID,
+				Label:   mm.providerLabel(providerID),
+				Kind:    settingsAction,
+				Current: func() string { return mm.providerUsageSummary(providerID) },
+				Help:    "Subscription windows and balances reported by " + providerID + ".",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					return mm2.openProviderUsagePanel(providerID)
+				},
+			})
 		}
-		providerID := providerID
-		rows = append(rows, settingsRow{
-			ID:      "usage-" + providerID,
-			Label:   m.providerLabel(providerID),
-			Kind:    settingsAction,
-			Current: func() string { return m.providerUsageSummary(providerID) },
-			Help:    "Subscription windows and balances reported by " + providerID + ".",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				return m.openProviderUsagePanel(providerID)
-			},
-		})
+		if len(rows) == 0 {
+			return nil
+		}
+		return []settingsTab{{ID: "panel", Label: "Usage limits", Rows: rows}}
 	}
-	if len(rows) == 0 {
-		m.setToast("no provider reports usage")
-		return
-	}
-	m.openProvidersPanel("Usage limits", rows)
+	state := m.pushProvidersPanel("Usage limits", build)
+	m.showPage(state)
 	m.panelUsageProvider = ""
 }
 
@@ -240,84 +243,94 @@ func (m *Model) openProviderUsagePanel(providerID string) tea.Cmd {
 		command = m.loadProviderUsage(providerID)
 	}
 
-	rows := []settingsRow{
-		{
-			ID:      "usage-provider",
-			Label:   "Provider",
-			Kind:    settingsInfo,
-			Current: func() string { return providerID },
-		},
-		{
-			ID:    "usage-updated",
-			Label: "Updated",
-			Kind:  settingsInfo,
-			Current: func() string {
-				state := m.providerUsage[providerID]
-				if state == nil {
-					return "never"
-				}
-				if state.loading {
-					return "querying…"
-				}
-				if state.report == nil {
-					return "never"
-				}
-				return formatUsageTimestamp(state.report.CapturedAt)
+	build := func(mm *Model) []settingsTab {
+		rows := []settingsRow{
+			{
+				ID:      "usage-provider",
+				Label:   "Provider",
+				Kind:    settingsInfo,
+				Current: func() string { return providerID },
 			},
-		},
-		{
-			ID:    "usage-refresh",
-			Label: "Refresh usage",
-			Kind:  settingsAction,
-			Help:  "Queries the provider again; the report stays in memory.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				return m.loadProviderUsage(providerID)
+			{
+				ID:    "usage-updated",
+				Label: "Updated",
+				Kind:  settingsInfo,
+				Current: func() string {
+					st := mm.providerUsage[providerID]
+					if st == nil {
+						return "never"
+					}
+					if st.loading {
+						return "querying…"
+					}
+					if st.report == nil {
+						return "never"
+					}
+					return formatUsageTimestamp(st.report.CapturedAt)
+				},
 			},
-		},
+			{
+				ID:    "usage-refresh",
+				Label: "Refresh usage",
+				Kind:  settingsAction,
+				Help:  "Queries the provider again; the report stays in memory.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					return mm2.loadProviderUsage(providerID)
+				},
+			},
+		}
+
+		if mm.providerUsageStatus(providerID) != "" {
+			rows = append(rows, settingsRow{
+				ID:      "usage-status",
+				Label:   "Status",
+				Kind:    settingsInfo,
+				Current: func() string { return mm.providerUsageStatus(providerID) },
+			})
+		}
+		st := mm.providerUsage[providerID]
+		if st != nil && st.report != nil {
+			for index, bucket := range st.report.Buckets {
+				bucket := bucket
+				rows = append(rows, settingsRow{
+					ID:      "usage-bucket-" + strconv.Itoa(index),
+					Label:   usageBucketLabel(bucket),
+					Kind:    settingsInfo,
+					Current: func() string { return formatUsageBucket(bucket) },
+					Help:    usageBucketHelp(bucket),
+				})
+			}
+			for index, metric := range st.report.Metrics {
+				metric := metric
+				rows = append(rows, settingsRow{
+					ID:      "usage-metric-" + strconv.Itoa(index),
+					Label:   metric.Label,
+					Kind:    settingsInfo,
+					Current: func() string { return formatUsageMetric(metric) },
+				})
+			}
+			for index, note := range st.report.Notes {
+				note := note
+				rows = append(rows, settingsRow{
+					ID:      "usage-note-" + strconv.Itoa(index),
+					Label:   "Note",
+					Kind:    settingsInfo,
+					Current: func() string { return note },
+				})
+			}
+		}
+		return []settingsTab{{ID: "panel", Label: "Usage: " + mm.providerLabel(providerID), Rows: rows}}
 	}
 
-	if m.providerUsageStatus(providerID) != "" {
-		rows = append(rows, settingsRow{
-			ID:      "usage-status",
-			Label:   "Status",
-			Kind:    settingsInfo,
-			Current: func() string { return m.providerUsageStatus(providerID) },
-		})
-	}
-	state = m.providerUsage[providerID]
-	if state != nil && state.report != nil {
-		for index, bucket := range state.report.Buckets {
-			bucket := bucket
-			rows = append(rows, settingsRow{
-				ID:      "usage-bucket-" + strconv.Itoa(index),
-				Label:   usageBucketLabel(bucket),
-				Kind:    settingsInfo,
-				Current: func() string { return formatUsageBucket(bucket) },
-				Help:    usageBucketHelp(bucket),
-			})
-		}
-		for index, metric := range state.report.Metrics {
-			metric := metric
-			rows = append(rows, settingsRow{
-				ID:      "usage-metric-" + strconv.Itoa(index),
-				Label:   metric.Label,
-				Kind:    settingsInfo,
-				Current: func() string { return formatUsageMetric(metric) },
-			})
-		}
-		for index, note := range state.report.Notes {
-			note := note
-			rows = append(rows, settingsRow{
-				ID:      "usage-note-" + strconv.Itoa(index),
-				Label:   "Note",
-				Kind:    settingsInfo,
-				Current: func() string { return note },
-			})
-		}
+	if m.settingsPanel != nil && m.settingsPanel.usageProviderID == providerID && m.settingsPanel.build != nil {
+		m.settingsPanel.rebuild(m)
+		m.showPage(m.settingsPanel)
+		return command
 	}
 
-	m.openProvidersPanel("Usage: "+m.providerLabel(providerID), rows)
-	m.panelUsageProvider = providerID
+	pState := m.pushProvidersPanel("Usage: "+m.providerLabel(providerID), build)
+	pState.usageProviderID = providerID
+	m.showPage(pState)
 	return command
 }
 

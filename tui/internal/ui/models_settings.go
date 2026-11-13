@@ -296,71 +296,82 @@ func (m *Model) openModelsPanel(title string, rows []settingsRow) {
 	m.openSettingsPanelAt("models", title, rows)
 }
 
+func (m *Model) pushModelsPanel(title string, build func(*Model) []settingsTab) {
+	state := m.pushSettingsPanel(pageModels, title, build)
+	m.showPage(state)
+}
+
 // openEnabledProvidersPanel lists providers with their enabled counts.
 func (m *Model) openEnabledProvidersPanel() {
 	if m.catalog == nil {
 		m.setToast("model catalog unavailable")
 		return
 	}
-	rows := []settingsRow{
-		{
-			ID:      "enabled-count",
-			Label:   "Enabled",
-			Kind:    settingsInfo,
-			Current: func() string { return fmt.Sprintf("%d of %d models", m.enabledCount(), len(m.catalog.Models())) },
-		},
-		{
-			ID:    "enable-all",
-			Label: "Enable all models",
-			Kind:  settingsAction,
-			Help:  "Removes enabledModels so every model, including future ones, is enabled.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				if err := m.settings.ClearEnabledModels(); err != nil {
-					m.setToast(err.Error())
-					return nil
-				}
-				m.refreshEnabledModels()
-				m.setToast("all models enabled")
-				return nil
-			},
-		},
-		{
-			ID:    "disable-all",
-			Label: "Disable all but one",
-			Kind:  settingsAction,
-			Help:  "Keeps one model enabled so a session can still start.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				patterns, _ := modelcatalog.SetAllDisabled(m.catalog.Models())
-				if err := m.settings.SetEnabledModels(patterns); err != nil {
-					m.setToast(err.Error())
-					return nil
-				}
-				m.refreshEnabledModels()
-				m.setToast("kept one model enabled")
-				return nil
-			},
-		},
-	}
-	for _, provider := range m.catalog.Providers {
-		if len(provider.Models) == 0 {
-			continue
+	build := func(mm *Model) []settingsTab {
+		if mm.catalog == nil {
+			return nil
 		}
-		provider := provider
-		rows = append(rows, settingsRow{
-			ID:    "enabled-" + provider.ID,
-			Label: provider.Name,
-			Kind:  settingsAction,
-			Help:  "Turn this provider's models on or off.",
-			Current: func() string {
-				return fmt.Sprintf("%d/%d", m.providerEnabledCount(provider), len(provider.Models))
+		rows := []settingsRow{
+			{
+				ID:      "enabled-count",
+				Label:   "Enabled",
+				Kind:    settingsInfo,
+				Current: func() string { return fmt.Sprintf("%d of %d models", mm.enabledCount(), len(mm.catalog.Models())) },
 			},
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				m.openEnabledProviderPanel(provider.ID)
-				return nil
+			{
+				ID:    "enable-all",
+				Label: "Enable all models",
+				Kind:  settingsAction,
+				Help:  "Removes enabledModels so every model, including future ones, is enabled.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					if err := mm2.settings.ClearEnabledModels(); err != nil {
+						mm2.setToast(err.Error())
+						return nil
+					}
+					mm2.refreshEnabledModels()
+					mm2.setToast("all models enabled")
+					return nil
+				},
 			},
-		})
+			{
+				ID:    "disable-all",
+				Label: "Disable all but one",
+				Kind:  settingsAction,
+				Help:  "Keeps one model enabled so a session can still start.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					patterns, _ := modelcatalog.SetAllDisabled(mm2.catalog.Models())
+					if err := mm2.settings.SetEnabledModels(patterns); err != nil {
+						mm2.setToast(err.Error())
+						return nil
+					}
+					mm2.refreshEnabledModels()
+					mm2.setToast("kept one model enabled")
+					return nil
+				},
+			},
+		}
+		for _, provider := range mm.catalog.Providers {
+			if len(provider.Models) == 0 {
+				continue
+			}
+			provider := provider
+			rows = append(rows, settingsRow{
+				ID:    "enabled-" + provider.ID,
+				Label: provider.Name,
+				Kind:  settingsAction,
+				Help:  "Turn this provider's models on or off.",
+				Current: func() string {
+					return fmt.Sprintf("%d/%d", mm.providerEnabledCount(provider), len(provider.Models))
+				},
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					mm2.openEnabledProviderPanel(provider.ID)
+					return nil
+				},
+			})
+		}
+		return []settingsTab{{ID: "panel", Label: "Enabled models", Rows: rows}}
 	}
-	m.openModelsPanel("Enabled models", rows)
+	m.pushModelsPanel("Enabled models", build)
 }
 
 func (m *Model) openEnabledProviderPanel(providerID string) {
@@ -369,38 +380,45 @@ func (m *Model) openEnabledProviderPanel(providerID string) {
 		m.setToast("provider not found")
 		return
 	}
-	rows := []settingsRow{{
-		ID:    "enable-provider",
-		Label: "Enable all in " + provider.Name,
-		Kind:  settingsAction,
-		Run: func(m *Model, _ *settingsState) tea.Cmd {
-			for _, model := range provider.Models {
-				if err := m.setModelEnabled(model.Ref(), true); err != nil {
-					m.setToast(err.Error())
-					return nil
-				}
-			}
+	build := func(mm *Model) []settingsTab {
+		currProv := mm.catalog.Provider(providerID)
+		if currProv == nil {
 			return nil
-		},
-	}}
-	for _, model := range provider.Models {
-		model := model
-		label := model.Name
-		if label == "" {
-			label = model.ID
 		}
-		rows = append(rows, settingsRow{
-			ID:    "model-" + model.ID,
-			Label: label,
-			Help:  model.ID,
-			Kind:  settingsToggle,
-			Bool:  func() bool { return m.enabledModels[model.Ref()] },
-			SetBool: func(on bool) error {
-				return m.setModelEnabled(model.Ref(), on)
+		rows := []settingsRow{{
+			ID:    "enable-provider",
+			Label: "Enable all in " + currProv.Name,
+			Kind:  settingsAction,
+			Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+				for _, model := range currProv.Models {
+					if err := mm2.setModelEnabled(model.Ref(), true); err != nil {
+						mm2.setToast(err.Error())
+						return nil
+					}
+				}
+				return nil
 			},
-		})
+		}}
+		for _, model := range currProv.Models {
+			model := model
+			label := model.Name
+			if label == "" {
+				label = model.ID
+			}
+			rows = append(rows, settingsRow{
+				ID:    "model-" + model.ID,
+				Label: label,
+				Help:  model.ID,
+				Kind:  settingsToggle,
+				Bool:  func() bool { return mm.enabledModels[model.Ref()] },
+				SetBool: func(on bool) error {
+					return mm.setModelEnabled(model.Ref(), on)
+				},
+			})
+		}
+		return []settingsTab{{ID: "panel", Label: currProv.Name, Rows: rows}}
 	}
-	m.openModelsPanel(provider.Name, rows)
+	m.pushModelsPanel(provider.Name, build)
 }
 
 func (m *Model) setModelEnabled(ref string, on bool) error {
@@ -470,32 +488,38 @@ func (m *Model) openThinkingProvidersPanel() {
 		m.setToast("model catalog unavailable")
 		return
 	}
-	rows := []settingsRow{{
-		ID:    "thinking-count",
-		Label: "Overrides",
-		Kind:  settingsInfo,
-		Current: func() string {
-			levels, _ := m.settings.ModelThinkingLevels()
-			return fmt.Sprintf("%d models", len(levels))
-		},
-	}}
-	for _, provider := range m.catalog.Providers {
-		if len(provider.Models) == 0 {
-			continue
+	build := func(mm *Model) []settingsTab {
+		if mm.catalog == nil {
+			return nil
 		}
-		provider := provider
-		rows = append(rows, settingsRow{
-			ID:    "thinking-" + provider.ID,
-			Label: provider.Name,
-			Kind:  settingsAction,
-			Help:  "Set a startup thinking level for one of its models.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				m.openThinkingProviderPanel(provider.ID)
-				return nil
+		rows := []settingsRow{{
+			ID:    "thinking-count",
+			Label: "Overrides",
+			Kind:  settingsInfo,
+			Current: func() string {
+				levels, _ := mm.settings.ModelThinkingLevels()
+				return fmt.Sprintf("%d models", len(levels))
 			},
-		})
+		}}
+		for _, provider := range mm.catalog.Providers {
+			if len(provider.Models) == 0 {
+				continue
+			}
+			provider := provider
+			rows = append(rows, settingsRow{
+				ID:    "thinking-" + provider.ID,
+				Label: provider.Name,
+				Kind:  settingsAction,
+				Help:  "Set a startup thinking level for one of its models.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					mm2.openThinkingProviderPanel(provider.ID)
+					return nil
+				},
+			})
+		}
+		return []settingsTab{{ID: "panel", Label: "Per-model thinking levels", Rows: rows}}
 	}
-	m.openModelsPanel("Per-model thinking levels", rows)
+	m.pushModelsPanel("Per-model thinking levels", build)
 }
 
 func (m *Model) openThinkingProviderPanel(providerID string) {
@@ -504,41 +528,48 @@ func (m *Model) openThinkingProviderPanel(providerID string) {
 		m.setToast("provider not found")
 		return
 	}
-	levels := providerThinkingLevels(m)
-	rows := make([]settingsRow, 0, len(provider.Models))
-	for _, model := range provider.Models {
-		model := model
-		label := model.Name
-		if label == "" {
-			label = model.ID
+	build := func(mm *Model) []settingsTab {
+		currProv := mm.catalog.Provider(providerID)
+		if currProv == nil {
+			return nil
 		}
-		rows = append(rows, settingsRow{
-			ID:    "level-" + model.ID,
-			Label: label,
-			Help:  model.ID + " · supported: " + supportedLevels(model),
-			Kind:  settingsChoice,
-			Current: func() string {
-				override := levels[model.Ref()]
-				if override == "" {
-					return "default"
-				}
-				return override
-			},
-			Choices: thinkingLevelChoices(true),
-			Apply: func(value string) error {
-				if value == "" {
-					if err := m.settings.ClearModelThinkingLevel(model.Ref()); err != nil {
+		levels := providerThinkingLevels(mm)
+		rows := make([]settingsRow, 0, len(currProv.Models))
+		for _, model := range currProv.Models {
+			model := model
+			label := model.Name
+			if label == "" {
+				label = model.ID
+			}
+			rows = append(rows, settingsRow{
+				ID:    "level-" + model.ID,
+				Label: label,
+				Help:  model.ID + " · supported: " + supportedLevels(model),
+				Kind:  settingsChoice,
+				Current: func() string {
+					override := levels[model.Ref()]
+					if override == "" {
+						return "default"
+					}
+					return override
+				},
+				Choices: thinkingLevelChoices(true),
+				Apply: func(value string) error {
+					if value == "" {
+						if err := mm.settings.ClearModelThinkingLevel(model.Ref()); err != nil {
+							return err
+						}
+					} else if err := mm.settings.SetModelThinkingLevel(model.Ref(), value); err != nil {
 						return err
 					}
-				} else if err := m.settings.SetModelThinkingLevel(model.Ref(), value); err != nil {
-					return err
-				}
-				levels = providerThinkingLevels(m)
-				return nil
-			},
-		})
+					levels = providerThinkingLevels(mm)
+					return nil
+				},
+			})
+		}
+		return []settingsTab{{ID: "panel", Label: currProv.Name + " thinking levels", Rows: rows}}
 	}
-	m.openModelsPanel(provider.Name+" thinking levels", rows)
+	m.pushModelsPanel(provider.Name+" thinking levels", build)
 }
 
 func providerThinkingLevels(m *Model) map[string]string {

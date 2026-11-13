@@ -2222,7 +2222,13 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 		case "model":
 			m.closeOverlay()
 			if item.Value == manageModelsValue {
-				return m.openPage(pageModels)
+				cmd := m.openPage(pageModels)
+				if m.settingsPanel != nil {
+					m.settingsPanel.back = func(mm *Model) tea.Cmd {
+						return mm.openModelPicker()
+					}
+				}
+				return cmd
 			}
 			return m.setModelByLabel(item.Value)
 		case "session":

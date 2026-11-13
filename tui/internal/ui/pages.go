@@ -101,8 +101,8 @@ func (m *Model) openSettingsAt(id string) tea.Cmd {
 // showPage installs a page state as the open settings overlay.
 func (m *Model) showPage(state *settingsState) {
 	m.settingsPanel = state
-	m.panelProvider = ""
-	m.panelUsageProvider = ""
+	m.panelProvider = state.providerID
+	m.panelUsageProvider = state.usageProviderID
 	action := state.action
 	if action == "" {
 		if state.detail {
@@ -119,7 +119,7 @@ func (m *Model) showPage(state *settingsState) {
 func (m *Model) openSettingsOverlay() {
 	if m.settingsPanel == nil {
 		m.settingsPanel = newPageState(m.buildPage(pageSettings))
-	} else if !m.settingsPanel.detail {
+	} else {
 		m.settingsPanel.rebuild(m)
 	}
 	state := m.settingsPanel
@@ -134,15 +134,50 @@ func (m *Model) openSettingsOverlay() {
 	m.openOverlay(&overlay{kind: overlaySettings, action: action, settings: state})
 }
 
+// pushSettingsPanel creates a drill-down panel whose parent is the currently open
+// settings panel, so esc unwinds one level instead of jumping back to the root.
+func (m *Model) pushSettingsPanel(fallbackID, title string, build func(*Model) []settingsTab) *settingsState {
+	var tabs []settingsTab
+	if build != nil {
+		tabs = build(m)
+	}
+	state := newSettingsPanel(title, tabs)
+	state.build = build
+	if m.overlay != nil && m.overlay.kind == overlaySettings && m.settingsPanel != nil {
+		state.parent = m.settingsPanel
+	}
+	state.back = func(mm *Model) tea.Cmd {
+		return mm.popSettingsPanel(fallbackID)
+	}
+	return state
+}
+
+// popSettingsPanel pops the current settings panel, returning to its parent
+// with cursor, scroll position, and filter preserved, or falls back to fallbackID.
+func (m *Model) popSettingsPanel(fallbackID string) tea.Cmd {
+	m.reloadConfig()
+	if m.settingsPanel != nil && m.settingsPanel.parent != nil {
+		parent := m.settingsPanel.parent
+		parent.rebuild(m)
+		m.showPage(parent)
+		return tea.Batch(m.loadEntries(), m.loadToolSnapshot())
+	}
+	if fallbackID != "" {
+		return m.openSettingsAt(fallbackID)
+	}
+	m.closeOverlay()
+	return nil
+}
+
 // openSettingsPanelAt opens a drill-down panel that returns to parentID when
 // the user presses esc.
 func (m *Model) openSettingsPanelAt(parentID, title string, rows []settingsRow) {
-	state := newSettingsPanel(title, []settingsTab{{
+	state := m.pushSettingsPanel(parentID, title, nil)
+	state.tabs = []settingsTab{{
 		ID:    "panel",
 		Label: title,
 		Rows:  rows,
-	}})
-	state.action = "settings-panel"
-	state.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt(parentID) }
+	}}
+	state.clampSelection()
 	m.showPage(state)
 }

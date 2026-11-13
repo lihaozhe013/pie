@@ -245,152 +245,165 @@ func (m *Model) openProviderPanel(providerID string) {
 		m.setToast("provider not found")
 		return
 	}
-	rows := []settingsRow{
-		{
-			ID:      "provider-id",
-			Label:   "Provider id",
-			Kind:    settingsInfo,
-			Current: func() string { return provider.ID },
-		},
-		{
-			ID:    "provider-edit",
-			Label: "Edit provider",
-			Kind:  settingsAction,
-			Help:  "Change the display name, base URL, API, or credential.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				m.openProviderEditor(provider.ID, false)
-				return nil
-			},
-		},
-		{
-			ID:    "provider-auth",
-			Label: "Credential",
-			Kind:  settingsInfo,
-			Current: func() string {
-				if provider.Auth != nil {
-					return provider.Auth.Status()
-				}
-				if provider.CredentialType != "" {
-					return provider.CredentialType
-				}
-				if provider.APIKey != "" {
-					return "models.json key"
-				}
-				return "none"
-			},
-			Help: providerAuthHelp(provider.Auth),
-		},
+	if m.settingsPanel != nil && m.settingsPanel.providerID == providerID && m.settingsPanel.build != nil {
+		m.settingsPanel.rebuild(m)
+		m.showPage(m.settingsPanel)
+		return
 	}
-	if auth := provider.Auth; auth != nil {
-		if auth.HasOAuth() {
-			rows = append(rows,
-				settingsRow{
-					ID:      "provider-oauth",
-					Label:   "OAuth method",
-					Kind:    settingsInfo,
-					Current: func() string { return auth.OAuthName },
-					Help:    "OAuth opens a browser page; a device code appears here when one is needed.",
-				},
-				settingsRow{
-					ID:    "provider-login-oauth",
-					Label: "Sign in with OAuth",
-					Kind:  settingsAction,
-					Help:  "Runs the provider's OAuth flow inside pi and stores the credential in auth.json.",
-					Run: func(m *Model, _ *settingsState) tea.Cmd {
-						return m.startProviderLogin(provider.ID, "oauth")
-					},
-				},
-			)
-		}
-		if auth.APIKeyLogin {
-			rows = append(rows, settingsRow{
-				ID:    "provider-login-key",
-				Label: "Sign in with API key",
-				Kind:  settingsAction,
-				Help:  "Asks for the provider's API key and stores it in auth.json.",
-				Run: func(m *Model, _ *settingsState) tea.Cmd {
-					return m.startProviderLogin(provider.ID, "api_key")
-				},
-			})
-		}
-		if m.authFlow == provider.ID {
-			rows = append(rows, settingsRow{
-				ID:    "provider-login-cancel",
-				Label: "Cancel sign-in",
-				Kind:  settingsAction,
-				Help:  "Aborts the sign-in this provider is running.",
-				Run: func(m *Model, _ *settingsState) tea.Cmd {
-					return m.cancelProviderLogin(provider.ID)
-				},
-			})
-		}
-	}
-	if provider.CredentialType != "" {
-		rows = append(rows, settingsRow{
-			ID:    "provider-logout",
-			Label: "Sign out",
-			Kind:  settingsAction,
-			Help:  "Deletes the stored credential and refreshes the model list.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				return m.signOutProvider(provider.ID)
-			},
-		})
-	}
-	if providerusage.Supported(provider.ID) {
-		rows = append(rows, settingsRow{
-			ID:      "provider-usage",
-			Label:   "Usage limits",
-			Kind:    settingsAction,
-			Current: func() string { return m.providerUsageSummary(provider.ID) },
-			Help:    "Rate-limit windows and balances from the provider's own usage endpoint.",
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				return m.openProviderUsagePanel(provider.ID)
-			},
-		})
-	}
-	rows = append(rows,
-		settingsRow{
-			ID:      "provider-base",
-			Label:   "Base URL",
-			Kind:    settingsInfo,
-			Current: func() string { return provider.BaseURL },
-		},
-		settingsRow{
-			ID:      "provider-api",
-			Label:   "API",
-			Kind:    settingsInfo,
-			Current: func() string { return provider.API },
-		},
-	)
-	rows = append(rows, settingsRow{
-		ID:    "provider-add-model",
-		Label: "Add model",
-		Kind:  settingsAction,
-		Help:  "Adds a model entry to this provider in models.json.",
-		Run: func(m *Model, _ *settingsState) tea.Cmd {
-			m.openModelEditor(provider.ID, "", true)
+	build := func(mm *Model) []settingsTab {
+		currProv := mm.catalog.Provider(providerID)
+		if currProv == nil {
 			return nil
-		},
-	})
-	for _, model := range provider.Models {
-		model := model
-		label := model.Name
-		if label == "" {
-			label = model.ID
 		}
+		rows := []settingsRow{
+			{
+				ID:      "provider-id",
+				Label:   "Provider id",
+				Kind:    settingsInfo,
+				Current: func() string { return currProv.ID },
+			},
+			{
+				ID:    "provider-edit",
+				Label: "Edit provider",
+				Kind:  settingsAction,
+				Help:  "Change the display name, base URL, API, or credential.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					mm2.openProviderEditor(currProv.ID, false)
+					return nil
+				},
+			},
+			{
+				ID:    "provider-auth",
+				Label: "Credential",
+				Kind:  settingsInfo,
+				Current: func() string {
+					if currProv.Auth != nil {
+						return currProv.Auth.Status()
+					}
+					if currProv.CredentialType != "" {
+						return currProv.CredentialType
+					}
+					if currProv.APIKey != "" {
+						return "models.json key"
+					}
+					return "none"
+				},
+				Help: providerAuthHelp(currProv.Auth),
+			},
+		}
+		if auth := currProv.Auth; auth != nil {
+			if auth.HasOAuth() {
+				rows = append(rows,
+					settingsRow{
+						ID:      "provider-oauth",
+						Label:   "OAuth method",
+						Kind:    settingsInfo,
+						Current: func() string { return auth.OAuthName },
+						Help:    "OAuth opens a browser page; a device code appears here when one is needed.",
+					},
+					settingsRow{
+						ID:    "provider-login-oauth",
+						Label: "Sign in with OAuth",
+						Kind:  settingsAction,
+						Help:  "Runs the provider's OAuth flow inside pi and stores the credential in auth.json.",
+						Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+							return mm2.startProviderLogin(currProv.ID, "oauth")
+						},
+					},
+				)
+			}
+			if auth.APIKeyLogin {
+				rows = append(rows, settingsRow{
+					ID:    "provider-login-key",
+					Label: "Sign in with API key",
+					Kind:  settingsAction,
+					Help:  "Asks for the provider's API key and stores it in auth.json.",
+					Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+						return mm2.startProviderLogin(currProv.ID, "api_key")
+					},
+				})
+			}
+			if mm.authFlow == currProv.ID {
+				rows = append(rows, settingsRow{
+					ID:    "provider-login-cancel",
+					Label: "Cancel sign-in",
+					Kind:  settingsAction,
+					Help:  "Aborts the sign-in this provider is running.",
+					Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+						return mm2.cancelProviderLogin(currProv.ID)
+					},
+				})
+			}
+		}
+		if currProv.CredentialType != "" {
+			rows = append(rows, settingsRow{
+				ID:    "provider-logout",
+				Label: "Sign out",
+				Kind:  settingsAction,
+				Help:  "Deletes the stored credential and refreshes the model list.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					return mm2.signOutProvider(currProv.ID)
+				},
+			})
+		}
+		if providerusage.Supported(currProv.ID) {
+			rows = append(rows, settingsRow{
+				ID:      "provider-usage",
+				Label:   "Usage limits",
+				Kind:    settingsAction,
+				Current: func() string { return mm.providerUsageSummary(currProv.ID) },
+				Help:    "Rate-limit windows and balances from the provider's own usage endpoint.",
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					return mm2.openProviderUsagePanel(currProv.ID)
+				},
+			})
+		}
+		rows = append(rows,
+			settingsRow{
+				ID:      "provider-base",
+				Label:   "Base URL",
+				Kind:    settingsInfo,
+				Current: func() string { return currProv.BaseURL },
+			},
+			settingsRow{
+				ID:      "provider-api",
+				Label:   "API",
+				Kind:    settingsInfo,
+				Current: func() string { return currProv.API },
+			},
+		)
 		rows = append(rows, settingsRow{
-			ID:    "model-" + model.ID,
-			Label: label,
+			ID:    "provider-add-model",
+			Label: "Add model",
 			Kind:  settingsAction,
-			Help:  modelSummary(model),
-			Run: func(m *Model, _ *settingsState) tea.Cmd {
-				m.providerModelAction(provider.ID, model.ID)
+			Help:  "Adds a model entry to this provider in models.json.",
+			Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+				mm2.openModelEditor(currProv.ID, "", true)
 				return nil
 			},
 		})
+		for _, model := range currProv.Models {
+			model := model
+			label := model.Name
+			if label == "" {
+				label = model.ID
+			}
+			rows = append(rows, settingsRow{
+				ID:    "model-" + model.ID,
+				Label: label,
+				Kind:  settingsAction,
+				Help:  modelSummary(model),
+				Run: func(mm2 *Model, _ *settingsState) tea.Cmd {
+					mm2.providerModelAction(currProv.ID, model.ID)
+					return nil
+				},
+			})
+		}
+		return []settingsTab{{ID: "panel", Label: currProv.Name, Rows: rows}}
 	}
-	m.openProvidersPanel(provider.Name, rows)
-	m.panelProvider = provider.ID
+	state := m.pushProvidersPanel(provider.Name, build)
+	state.providerID = providerID
+	m.showPage(state)
 }
 
 func (m *Model) openModelPanel(providerID, modelID string) {
@@ -399,56 +412,63 @@ func (m *Model) openModelPanel(providerID, modelID string) {
 		m.setToast("provider not found")
 		return
 	}
-	var model *modelcatalog.Model
-	for _, candidate := range provider.Models {
-		if candidate.ID == modelID {
-			model = candidate
-			break
+	build := func(mm *Model) []settingsTab {
+		currProv := mm.catalog.Provider(providerID)
+		if currProv == nil {
+			return nil
 		}
+		var model *modelcatalog.Model
+		for _, candidate := range currProv.Models {
+			if candidate.ID == modelID {
+				model = candidate
+				break
+			}
+		}
+		if model == nil {
+			return nil
+		}
+		rows := []settingsRow{
+			{
+				ID:      "model-id",
+				Label:   "Model id",
+				Kind:    settingsInfo,
+				Current: func() string { return model.ID },
+			},
+			{
+				ID:      "model-name",
+				Label:   "Name",
+				Kind:    settingsInfo,
+				Current: func() string { return model.Name },
+			},
+			{
+				ID:      "model-context",
+				Label:   "Context window",
+				Kind:    settingsInfo,
+				Current: func() string { return strconv.Itoa(model.ContextWindow) },
+			},
+			{
+				ID:      "model-max",
+				Label:   "Max output tokens",
+				Kind:    settingsInfo,
+				Current: func() string { return strconv.Itoa(model.MaxTokens) },
+			},
+			{
+				ID:      "model-reasoning",
+				Label:   "Reasoning",
+				Kind:    settingsInfo,
+				Current: func() string { return onOff(model.Reasoning) },
+			},
+			{
+				ID:      "model-cost",
+				Label:   "Cost / M tokens",
+				Kind:    settingsInfo,
+				Current: func() string { return modelCostSummary(model) },
+			},
+		}
+		return []settingsTab{{ID: "panel", Label: model.ID, Rows: rows}}
 	}
-	if model == nil {
-		m.setToast("model not found")
-		return
-	}
-	rows := []settingsRow{
-		{
-			ID:      "model-id",
-			Label:   "Model id",
-			Kind:    settingsInfo,
-			Current: func() string { return model.ID },
-		},
-		{
-			ID:      "model-name",
-			Label:   "Name",
-			Kind:    settingsInfo,
-			Current: func() string { return model.Name },
-		},
-		{
-			ID:      "model-context",
-			Label:   "Context window",
-			Kind:    settingsInfo,
-			Current: func() string { return strconv.Itoa(model.ContextWindow) },
-		},
-		{
-			ID:      "model-max",
-			Label:   "Max output tokens",
-			Kind:    settingsInfo,
-			Current: func() string { return strconv.Itoa(model.MaxTokens) },
-		},
-		{
-			ID:      "model-reasoning",
-			Label:   "Reasoning",
-			Kind:    settingsInfo,
-			Current: func() string { return onOff(model.Reasoning) },
-		},
-		{
-			ID:      "model-cost",
-			Label:   "Cost / M tokens",
-			Kind:    settingsInfo,
-			Current: func() string { return modelCostSummary(model) },
-		},
-	}
-	m.openProvidersPanel(model.ID, rows)
+	state := m.pushProvidersPanel(modelID, build)
+	m.showPage(state)
 }
 
 func modelSummary(model *modelcatalog.Model) string {
@@ -478,4 +498,8 @@ func modelCostSummary(model *modelcatalog.Model) string {
 // openProvidersPanel opens a provider-focused sub-panel above Providers.
 func (m *Model) openProvidersPanel(title string, rows []settingsRow) {
 	m.openSettingsPanelAt("providers", title, rows)
+}
+
+func (m *Model) pushProvidersPanel(title string, build func(*Model) []settingsTab) *settingsState {
+	return m.pushSettingsPanel(pageProviders, title, build)
 }

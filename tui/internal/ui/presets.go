@@ -675,7 +675,8 @@ func (m *Model) presetTabs(draft *presetDraft) []settingsTab {
 				s.err = err.Error()
 				return nil
 			}
-			cmd := m.openSettingsAt("tools")
+			m.presetDraft = nil
+			cmd := m.popSettingsPanel("tools")
 			if m.settingsPanel != nil {
 				m.settingsPanel.notice = "preset saved"
 			}
@@ -695,7 +696,8 @@ func (m *Model) presetTabs(draft *presetDraft) []settingsTab {
 					return nil
 				}
 				selection := config.CustomPresetPrefix + draft.Preset.ID
-				m.openSettingsAt("tools")
+				m.presetDraft = nil
+				m.popSettingsPanel("tools")
 				return m.applyPreset(selection)
 			},
 		})
@@ -714,7 +716,8 @@ func (m *Model) presetTabs(draft *presetDraft) []settingsTab {
 					s.err = err.Error()
 					return nil
 				}
-				cmd := m.openSettingsAt("tools")
+				m.presetDraft = nil
+				cmd := m.popSettingsPanel("tools")
 				if m.settingsPanel != nil {
 					m.settingsPanel.notice = "preset deleted"
 				}
@@ -729,7 +732,7 @@ func (m *Model) presetTabs(draft *presetDraft) []settingsTab {
 		Kind:  settingsAction,
 		Run: func(m *Model, _ *settingsState) tea.Cmd {
 			m.presetDraft = nil
-			return m.openSettingsAt("tools")
+			return m.popSettingsPanel("tools")
 		},
 	})
 
@@ -743,11 +746,16 @@ func (m *Model) openPresetEditor(draft *presetDraft) {
 	if !draft.IsNew {
 		title = "Tool preset: " + name
 	}
-	state := newSettingsPanel(title, m.presetTabs(draft))
+	state := m.pushSettingsPanel("tools", title, func(mm *Model) []settingsTab {
+		if mm.presetDraft == nil {
+			return nil
+		}
+		return mm.presetTabs(mm.presetDraft)
+	})
 	state.action = "preset-editor"
 	state.back = func(mm *Model) tea.Cmd {
 		mm.presetDraft = nil
-		return mm.openSettingsAt("tools")
+		return mm.popSettingsPanel("tools")
 	}
 	m.showPage(state)
 }

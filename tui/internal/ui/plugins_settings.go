@@ -78,10 +78,12 @@ func (m *Model) pluginsSettingsTab() settingsTab {
 			Kind:  settingsAction,
 			Help:  "npm:, git:, https:, or a local path. Runs pi install <source>.",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
-				request := &rpc.ExtensionUIRequestEvent{Title: "Install package", Method: "input", Placeholder: "npm:owner/package"}
-				overlay := newInputOverlay(request)
-				overlay.action = "plugin-install-global"
-				m.openOverlay(overlay)
+				m.openOverlayFromSettings(func() {
+					request := &rpc.ExtensionUIRequestEvent{Title: "Install package", Method: "input", Placeholder: "npm:owner/package"}
+					overlay := newInputOverlay(request)
+					overlay.action = "plugin-install-global"
+					m.openOverlay(overlay)
+				})
 				return nil
 			},
 		},
@@ -91,10 +93,12 @@ func (m *Model) pluginsSettingsTab() settingsTab {
 			Kind:  settingsAction,
 			Help:  "Adds the package to .pi/settings.json (pi install <source> -l).",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
-				request := &rpc.ExtensionUIRequestEvent{Title: "Install package locally", Method: "input", Placeholder: "npm:owner/package"}
-				overlay := newInputOverlay(request)
-				overlay.action = "plugin-install-project"
-				m.openOverlay(overlay)
+				m.openOverlayFromSettings(func() {
+					request := &rpc.ExtensionUIRequestEvent{Title: "Install package locally", Method: "input", Placeholder: "npm:owner/package"}
+					overlay := newInputOverlay(request)
+					overlay.action = "plugin-install-project"
+					m.openOverlay(overlay)
+				})
 				return nil
 			},
 		},
@@ -144,110 +148,139 @@ func (m *Model) pluginsSettingsTab() settingsTab {
 }
 
 func (m *Model) openPackageDetail(entry config.Package, scope string) tea.Cmd {
-	disabled := entry.Disabled
-	armed := false
-	setDisabled := func(value bool) error {
+	build := func(mm *Model) []settingsTab {
+		disabled := entry.Disabled
 		if scope == "project" {
-			if err := m.projectWriteRefusal(false); err != nil {
-				return err
-			}
-			settings := m.projectSettings()
-			if settings == nil {
-				return fmt.Errorf("cannot read .pi/settings.json")
-			}
-			if err := settings.SetPackageDisabled(entry.Source, value); err != nil {
-				return err
+			if settings := mm.projectSettings(); settings != nil {
+				if list, err := settings.PackageEntries(); err == nil {
+					for _, pkg := range list {
+						if pkg.Source == entry.Source {
+							disabled = pkg.Disabled
+							entry = pkg
+							break
+						}
+					}
+				}
 			}
 		} else {
-			if m.settings == nil {
-				return fmt.Errorf("settings.json is unavailable")
-			}
-			if err := m.settings.SetPackageDisabled(entry.Source, value); err != nil {
-				return err
+			if mm.settings != nil {
+				if list, err := mm.settings.PackageEntries(); err == nil {
+					for _, pkg := range list {
+						if pkg.Source == entry.Source {
+							disabled = pkg.Disabled
+							entry = pkg
+							break
+						}
+					}
+				}
 			}
 		}
-		disabled = value
-		return nil
+
+		armed := false
+		setDisabled := func(value bool) error {
+			if scope == "project" {
+				if err := mm.projectWriteRefusal(false); err != nil {
+					return err
+				}
+				settings := mm.projectSettings()
+				if settings == nil {
+					return fmt.Errorf("cannot read .pi/settings.json")
+				}
+				if err := settings.SetPackageDisabled(entry.Source, value); err != nil {
+					return err
+				}
+			} else {
+				if mm.settings == nil {
+					return fmt.Errorf("settings.json is unavailable")
+				}
+				if err := mm.settings.SetPackageDisabled(entry.Source, value); err != nil {
+					return err
+				}
+			}
+			disabled = value
+			return nil
+		}
+
+		tab := settingsTab{ID: "package", Label: "Package", Note: entry.Source}
+		tab.Rows = []settingsRow{
+			{ID: "package-reload-note", Label: "Applies", Kind: settingsInfo, Current: func() string { return "after a reload or restart" }},
+			{ID: "package-source", Label: "Source", Kind: settingsInfo, Current: func() string { return entry.Source }},
+			{ID: "package-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return scope }},
+			{
+				ID:    "package-enabled",
+				Label: "Enabled",
+				Help:  "Disabling empties every resource list. A package with its own filters must be switched from its own settings.",
+				Kind:  settingsToggle,
+				Bool:  func() bool { return !disabled },
+				SetBool: func(on bool) error {
+					return setDisabled(!on)
+				},
+			},
+			{
+				ID:    "package-reload",
+				Label: "Reload now",
+				Help:  "Runs /pie-reload so pi rereads settings without restarting.",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.reloadPi()
+				},
+			},
+			{
+				ID:    "package-update",
+				Label: "Update this package",
+				Kind:  settingsAction,
+				Help:  "Runs pi update --extension <source>.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					if scope == "project" {
+						if err := m.projectWriteRefusal(false); err != nil {
+							s.err = err.Error()
+							return nil
+						}
+					}
+					m.setToast("updating " + entry.Source + "…")
+					return m.runPiCommand([]string{"update", "--extension", entry.Source}, "updated "+entry.Source)
+				},
+			},
+			{
+				ID:    "package-remove",
+				Label: "Remove",
+				Kind:  settingsAction,
+				Help:  "Removes the package from settings. Press enter twice to confirm.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					if !armed {
+						armed = true
+						s.notice = "press enter again to remove " + entry.Source
+						return nil
+					}
+					if scope == "project" {
+						if err := m.projectWriteRefusal(false); err != nil {
+							s.err = err.Error()
+							return nil
+						}
+					}
+					args := []string{"remove", entry.Source}
+					if scope == "project" {
+						args = append(args, "-l")
+					}
+					m.setToast("removing " + entry.Source + "…")
+					return m.runPiCommand(args, "removed "+entry.Source)
+				},
+			},
+			{
+				ID:    "package-back",
+				Label: "Back",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.popSettingsPanel("plugins")
+				},
+			},
+		}
+		return []settingsTab{tab}
 	}
 
-	tab := settingsTab{ID: "package", Label: "Package", Note: entry.Source}
-	tab.Rows = []settingsRow{
-		{ID: "package-reload-note", Label: "Applies", Kind: settingsInfo, Current: func() string { return "after a reload or restart" }},
-		{ID: "package-source", Label: "Source", Kind: settingsInfo, Current: func() string { return entry.Source }},
-		{ID: "package-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return scope }},
-		{
-			ID:    "package-enabled",
-			Label: "Enabled",
-			Help:  "Disabling empties every resource list. A package with its own filters must be switched from its own settings.",
-			Kind:  settingsToggle,
-			Bool:  func() bool { return !disabled },
-			SetBool: func(on bool) error {
-				return setDisabled(!on)
-			},
-		},
-		{
-			ID:    "package-reload",
-			Label: "Reload now",
-			Help:  "Runs /pie-reload so pi rereads settings without restarting.",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.reloadPi()
-			},
-		},
-		{
-			ID:    "package-update",
-			Label: "Update this package",
-			Kind:  settingsAction,
-			Help:  "Runs pi update --extension <source>.",
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				if scope == "project" {
-					if err := m.projectWriteRefusal(false); err != nil {
-						s.err = err.Error()
-						return nil
-					}
-				}
-				m.setToast("updating " + entry.Source + "…")
-				return m.runPiCommand([]string{"update", "--extension", entry.Source}, "updated "+entry.Source)
-			},
-		},
-		{
-			ID:    "package-remove",
-			Label: "Remove",
-			Kind:  settingsAction,
-			Help:  "Removes the package from settings. Press enter twice to confirm.",
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				if !armed {
-					armed = true
-					s.notice = "press enter again to remove " + entry.Source
-					return nil
-				}
-				if scope == "project" {
-					if err := m.projectWriteRefusal(false); err != nil {
-						s.err = err.Error()
-						return nil
-					}
-				}
-				args := []string{"remove", entry.Source}
-				if scope == "project" {
-					args = append(args, "-l")
-				}
-				m.setToast("removing " + entry.Source + "…")
-				return m.runPiCommand(args, "removed "+entry.Source)
-			},
-		},
-		{
-			ID:    "package-back",
-			Label: "Back",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.openSettingsAt("plugins")
-			},
-		},
-	}
-	panel := newSettingsPanel("Package · "+entry.Source, []settingsTab{tab})
-	panel.action = "package-detail"
-	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("plugins") }
-	m.showPage(panel)
+	state := m.pushSettingsPanel("plugins", "Package · "+entry.Source, build)
+	state.action = "package-detail"
+	m.showPage(state)
 	return nil
 }
 
@@ -306,8 +339,10 @@ func tailLines(value string, count int) string {
 func (m *Model) applyPluginAction(msg pluginActionMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.addError("package: " + msg.err.Error())
-		return m, m.openSettingsAt("plugins")
+		m.openSettingsOverlay()
+		return m, nil
 	}
 	m.setToast(msg.summary + " · restart pie to load it")
-	return m, m.openSettingsAt("plugins")
+	m.openSettingsOverlay()
+	return m, nil
 }

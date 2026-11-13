@@ -369,13 +369,7 @@ func (m *Model) refreshAuthPanels() {
 	if m.settingsPanel == nil || m.overlay == nil || m.overlay.kind != overlaySettings {
 		return
 	}
-	if m.overlay.action == "settings-panel" && m.panelProvider != "" {
-		m.openProviderPanel(m.panelProvider)
-		return
-	}
-	if !m.settingsPanel.detail {
-		m.openSettingsOverlay()
-	}
+	m.openSettingsOverlay()
 }
 
 // signOutProvider removes a stored credential, with the bridge when the

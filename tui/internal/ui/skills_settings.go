@@ -79,10 +79,12 @@ func (m *Model) skillsSettingsTab() settingsTab {
 			Kind:  settingsAction,
 			Help:  "Find a skill by name and install it into the agent skills directory.",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
-				request := &rpc.ExtensionUIRequestEvent{Title: "Search skills.sh", Method: "input", Placeholder: "react"}
-				overlay := newInputOverlay(request)
-				overlay.action = "skill-search"
-				m.openOverlay(overlay)
+				m.openOverlayFromSettings(func() {
+					request := &rpc.ExtensionUIRequestEvent{Title: "Search skills.sh", Method: "input", Placeholder: "react"}
+					overlay := newInputOverlay(request)
+					overlay.action = "skill-search"
+					m.openOverlay(overlay)
+				})
 				return nil
 			},
 		},
@@ -92,10 +94,12 @@ func (m *Model) skillsSettingsTab() settingsTab {
 			Kind:  settingsAction,
 			Help:  "Accepts owner/repo, owner/repo@skill, or a skills.sh URL.",
 			Run: func(m *Model, s *settingsState) tea.Cmd {
-				request := &rpc.ExtensionUIRequestEvent{Title: "Install skill package", Method: "input", Placeholder: "owner/repo@skill"}
-				overlay := newInputOverlay(request)
-				overlay.action = "skill-install-source"
-				m.openOverlay(overlay)
+				m.openOverlayFromSettings(func() {
+					request := &rpc.ExtensionUIRequestEvent{Title: "Install skill package", Method: "input", Placeholder: "owner/repo@skill"}
+					overlay := newInputOverlay(request)
+					overlay.action = "skill-install-source"
+					m.openOverlay(overlay)
+				})
 				return nil
 			},
 		},
@@ -149,63 +153,74 @@ func (m *Model) skillsSettingsTab() settingsTab {
 }
 
 func (m *Model) openSkillDetail(skill skills.Skill) tea.Cmd {
-	disabled := skill.Disabled
-	tab := settingsTab{ID: "skill", Label: "Skill", Note: skill.FilePath}
-	tab.Rows = []settingsRow{
-		{ID: "skill-name", Label: "Name", Kind: settingsInfo, Current: func() string { return skill.Name }},
-		{ID: "skill-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return skill.Scope }},
-		{ID: "skill-description", Label: "Description", Kind: settingsInfo, Current: func() string { return skill.Description }},
-		{
-			ID:    "skill-invocation",
-			Label: "Model invocation",
-			Help:  "Disabled skills stay available as /skill:<name> but are left out of the model's skill list.",
-			Kind:  settingsToggle,
-			Bool:  func() bool { return !disabled },
-			SetBool: func(on bool) error {
-				if err := skills.SetDisabled(skill.FilePath, !on); err != nil {
-					return err
-				}
-				disabled = !on
-				return nil
+	build := func(mm *Model) []settingsTab {
+		disabled := skill.Disabled
+		list, _ := mm.skillList()
+		for _, s := range list {
+			if s.FilePath == skill.FilePath {
+				disabled = s.Disabled
+				skill = s
+				break
+			}
+		}
+		tab := settingsTab{ID: "skill", Label: "Skill", Note: skill.FilePath}
+		tab.Rows = []settingsRow{
+			{ID: "skill-name", Label: "Name", Kind: settingsInfo, Current: func() string { return skill.Name }},
+			{ID: "skill-scope", Label: "Scope", Kind: settingsInfo, Current: func() string { return skill.Scope }},
+			{ID: "skill-description", Label: "Description", Kind: settingsInfo, Current: func() string { return skill.Description }},
+			{
+				ID:    "skill-invocation",
+				Label: "Model invocation",
+				Help:  "Disabled skills stay available as /skill:<name> but are left out of the model's skill list.",
+				Kind:  settingsToggle,
+				Bool:  func() bool { return !disabled },
+				SetBool: func(on bool) error {
+					if err := skills.SetDisabled(skill.FilePath, !on); err != nil {
+						return err
+					}
+					disabled = !on
+					return nil
+				},
 			},
-		},
-		{
-			ID:      "skill-reload",
-			Label:   "Applies",
-			Kind:    settingsInfo,
-			Current: func() string { return "on the next pi start or reload" },
-		},
-		{
-			ID:    "skill-reload",
-			Label: "Reload pi",
-			Help:  "Runs /pie-reload so pi rereads its skill list without restarting.",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.reloadPi()
+			{
+				ID:      "skill-reload-note",
+				Label:   "Applies",
+				Kind:    settingsInfo,
+				Current: func() string { return "on the next pi start or reload" },
 			},
-		},
-		{
-			ID:    "skill-edit",
-			Label: "Edit skill file",
-			Kind:  settingsAction,
-			Help:  "Opens " + skill.FilePath + " in $VISUAL or $EDITOR.",
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.editSkillFile(skill.FilePath)
+			{
+				ID:    "skill-reload",
+				Label: "Reload pi",
+				Help:  "Runs /pie-reload so pi rereads its skill list without restarting.",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.reloadPi()
+				},
 			},
-		},
-		{
-			ID:    "skill-back",
-			Label: "Back",
-			Kind:  settingsAction,
-			Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.openSettingsAt("skills")
+			{
+				ID:    "skill-edit",
+				Label: "Edit skill file",
+				Kind:  settingsAction,
+				Help:  "Opens " + skill.FilePath + " in $VISUAL or $EDITOR.",
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.editSkillFile(skill.FilePath)
+				},
 			},
-		},
+			{
+				ID:    "skill-back",
+				Label: "Back",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.popSettingsPanel("skills")
+				},
+			},
+		}
+		return []settingsTab{tab}
 	}
-	panel := newSettingsPanel("Skill · "+skill.Name, []settingsTab{tab})
-	panel.action = "skill-detail"
-	panel.back = func(mm *Model) tea.Cmd { return mm.openSettingsAt("skills") }
-	m.showPage(panel)
+
+	state := m.pushSettingsPanel("skills", "Skill · "+skill.Name, build)
+	state.action = "skill-detail"
+	m.showPage(state)
 	return nil
 }
 
@@ -262,11 +277,13 @@ func (m *Model) updateSkills(global bool) tea.Cmd {
 func (m *Model) applySkillSearch(msg skillSearchMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		m.addError("skill search: " + msg.err.Error())
-		return m, m.openSettingsAt("skills")
+		m.openSettingsOverlay()
+		return m, nil
 	}
 	if len(msg.results) == 0 {
 		m.setToast("no skills found for " + msg.query)
-		return m, m.openSettingsAt("skills")
+		m.openSettingsOverlay()
+		return m, nil
 	}
 	items := make([]pickerItem, 0, len(msg.results))
 	for _, result := range msg.results {
@@ -276,7 +293,9 @@ func (m *Model) applySkillSearch(msg skillSearchMsg) (tea.Model, tea.Cmd) {
 		}
 		items = append(items, pickerItem{Value: result.Package, Label: result.Package, Detail: detail})
 	}
-	m.openOverlay(newPickerOverlay("skill-search-results", "Install a skill · "+msg.query, items))
+	picker := newPickerOverlay("skill-search-results", "Install a skill · "+msg.query, items)
+	picker.returnTo = m.overlay
+	m.openOverlay(picker)
 	return m, nil
 }
 
@@ -286,8 +305,10 @@ func (m *Model) applySkillAction(msg skillActionMsg) (tea.Model, tea.Cmd) {
 		if strings.TrimSpace(msg.output) != "" {
 			m.addNotice(msg.output)
 		}
+		m.openSettingsOverlay()
 		return m, nil
 	}
 	m.setToast(msg.summary)
-	return m, m.openSettingsAt("skills")
+	m.openSettingsOverlay()
+	return m, nil
 }

@@ -100,6 +100,15 @@ type settingsState struct {
 	detail bool
 	back   func(*Model) tea.Cmd
 	action string
+
+	// parent is the enclosing settings panel this drill-down opened from,
+	// allowing esc to unwind one level instead of jumping to the root.
+	parent *settingsState
+	// build regenerates tabs on rebuild or reload.
+	build func(*Model) []settingsTab
+
+	providerID      string
+	usageProviderID string
 }
 
 // newPageState builds a top-level page panel.
@@ -132,18 +141,27 @@ func newSettingsPanel(title string, tabs []settingsTab) *settingsState {
 
 // rebuild refreshes the rows from disk while keeping the current group and row.
 func (s *settingsState) rebuild(m *Model) {
-	if s.detail || s.page.ID == "" {
+	if s.build == nil && (s.detail || s.page.ID == "") {
 		return
 	}
 	groupID, rowID := s.selectedIDs()
-	page := m.buildPage(s.page.ID)
-	if len(page.Tabs) == 0 {
-		return
+	prevGroup, prevRow := s.sel.group, s.sel.row
+	if s.build != nil {
+		tabs := s.build(m)
+		if len(tabs) == 0 {
+			return
+		}
+		s.tabs = tabs
+	} else {
+		page := m.buildPage(s.page.ID)
+		if len(page.Tabs) == 0 {
+			return
+		}
+		s.page = settingsPage{ID: page.ID, Title: page.Title, Mode: page.Mode}
+		s.tabs = page.Tabs
 	}
-	s.page = settingsPage{ID: page.ID, Title: page.Title, Mode: page.Mode}
-	s.tabs = page.Tabs
 	s.active = 0
-	s.sel = settingsTarget{}
+	s.sel = settingsTarget{group: prevGroup, row: prevRow}
 	if groupID != "" {
 		for i, tab := range s.tabs {
 			if tab.ID == groupID {
@@ -859,7 +877,14 @@ func (m *Model) activateSettingsRow() (tea.Model, tea.Cmd) {
 			}
 			items = append(items, pickerItem{Value: choice.Value, Label: label, Detail: choice.Detail})
 		}
-		m.openOverlay(newPickerOverlay("settings-choice", row.Label, items))
+		picker := newPickerOverlay("settings-choice", row.Label, items)
+		for i, item := range picker.filtered {
+			if item.Value == current {
+				picker.cursor = i
+				break
+			}
+		}
+		m.openOverlay(picker)
 		return m, nil
 	case settingsAction:
 		if row.Run != nil {
