@@ -587,6 +587,9 @@ function ProviderDetail({
         models: data.models,
         endpoint: data.endpoint ?? provider.baseUrl ?? ''
       });
+      const existingIds = new Set((provider.models ?? []).map((m) => m.id));
+      const newModelIds = data.models.filter((m) => !existingIds.has(m.id)).map((m) => m.id);
+      setSelectedModelIds(newModelIds);
     } catch (error) {
       if (requestId !== discoveryRequestIdRef.current) return;
       setDiscoveryState({
@@ -643,6 +646,13 @@ function ProviderDetail({
     );
     if (additions.length === 0) return;
     onAddModels(additions);
+    if (enabledModels.view?.hasPatterns) {
+      enabledModels.setModels(
+        'add-discovered',
+        additions.map((model) => `${name}/${model.id}`),
+        true
+      );
+    }
     setSelectedModelIds([]);
   };
 
