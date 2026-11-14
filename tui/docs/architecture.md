@@ -135,6 +135,11 @@ has completed. Neither flag is forwarded to pi.
 - `overlay.go` — pickers and extension dialogs; `ask_user.go` renders the
   question inline above the composer instead of as a dialog, so the
   conversation stays visible and the prompt itself is the free-form answer.
+- `viewer.go` — the read-only page behind "View system prompt": the text is
+  wrapped once per width into a cached row list, then scrolled by row instead
+  of being re-laid out per frame, and `y` copies the source text unchanged. It
+  is also why the client needs no pager: an external one is an optional extra
+  row in the Context panel, offered only when it resolves on PATH.
 - `diff.go` — tool argument/result extraction and a dependency-free line diff.
 - `syntax.go` — chroma-based syntax colours for tool content: a shell
   command, or the file a coding tool reads, writes, or edits. A call whose
@@ -341,12 +346,17 @@ the row in place, so deleting several sessions in a row needs no reopen.
 `/context` is fed by `/pie-publish`, not by the UI guessing: the bridge reads
 `getActiveTools`, `getAllTools`, `getSystemPrompt`, and the session's work mode,
 and marks each tool active at publish time; autonomous mode hides `ask_user`
-there too, because the run does not declare it. The panel lists the tools, offers
-the system prompt through `$PAGER`, and refreshes on demand. A leadership
-without the bridge shows why instead of an empty list. Tool presets and Plan
-mode refuse with the reason as well: the binary always embeds the bridge, and
-restarting without it would drop the current session instead of switching the
-tool set in place.
+there too, because the run does not declare it. The panel lists the tools,
+shows the system prompt in a read-only page of the client's own, and refreshes
+on demand. The page is drawn in the client because the prompt is the one thing
+here that has to be readable on a machine with no pager installed; `PIE_PAGER`,
+`PAGER`, `less`, `most`, and `more` only add an optional "Open in ..." row, and
+the row is absent when none of them resolve on PATH. `y` copies the whole
+prompt through the same clipboard writer the transcript selection uses. A
+leadership without the bridge shows why instead of an empty list. Tool presets
+and Plan mode refuse with the reason as well: the binary always embeds the
+bridge, and restarting without it would drop the current session instead of
+switching the tool set in place.
 
 `/stats` is a small settings-style panel over the `get_session_stats` payload.
 The status bar's context meter reads the same payload. Both refresh when an

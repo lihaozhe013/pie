@@ -52,7 +52,7 @@ func (m *Model) showContextPanel() {
 			}
 		}
 		lines := strings.Count(snapshot.SystemPrompt, "\n") + 1
-		tab.Rows = []settingsRow{
+		rows := []settingsRow{
 			{ID: "context-tools", Label: "Tools", Kind: settingsInfo, Current: func() string {
 				return fmt.Sprintf("%d active · %d defined", active, len(snapshot.Tools))
 			}},
@@ -65,14 +65,28 @@ func (m *Model) showContextPanel() {
 				}
 				return snapshot.WorkMode
 			}},
-			{ID: "context-view", Label: "View system prompt", Kind: settingsAction, Help: "Opens $PAGER on a temporary copy.", Run: func(m *Model, s *settingsState) tea.Cmd {
-				return m.viewText("pie-system-prompt.md", snapshot.SystemPrompt)
-			}},
-			{ID: "context-refresh", Label: "Refresh", Kind: settingsAction, Run: func(m *Model, s *settingsState) tea.Cmd {
-				m.pendingContext = true
-				return m.loadToolSnapshot()
+			{ID: "context-view", Label: "View system prompt", Kind: settingsAction, Help: "Opens a read-only page; y copies the whole prompt.", Run: func(m *Model, s *settingsState) tea.Cmd {
+				return m.viewSystemPrompt("System prompt", snapshot.SystemPrompt)
 			}},
 		}
+		// The external pager is an extra, not a requirement: the page above always
+		// works, and this row exists only when one is actually installed.
+		if pager, ok := resolvePager(); ok {
+			rows = append(rows, settingsRow{
+				ID:    "context-pager",
+				Label: "Open in " + pager.name,
+				Help:  "Shows the prompt in " + pager.name + " and returns here when it exits.",
+				Kind:  settingsAction,
+				Run: func(m *Model, s *settingsState) tea.Cmd {
+					return m.pagerText("system-prompt.md", snapshot.SystemPrompt, pager)
+				},
+			})
+		}
+		rows = append(rows, settingsRow{ID: "context-refresh", Label: "Refresh", Kind: settingsAction, Run: func(m *Model, s *settingsState) tea.Cmd {
+			m.pendingContext = true
+			return m.loadToolSnapshot()
+		}})
+		tab.Rows = rows
 		for _, tool := range snapshot.Tools {
 			tool := tool
 			state := "inactive"
@@ -93,7 +107,59 @@ func (m *Model) showContextPanel() {
 	m.showPage(panel)
 }
 
-func (m *Model) viewText(name, text string) tea.Cmd {
+// viewSystemPrompt opens text in the client's own read-only page. This is the
+// default way to read the prompt because it needs nothing outside the binary.
+// The page returns to whatever overlay opened it, so the Context panel is
+// restored on esc.
+func (m *Model) viewSystemPrompt(title, text string) tea.Cmd {
+	if strings.TrimSpace(text) == "" {
+		m.setToast("nothing to show")
+		return nil
+	}
+	viewer := newViewerOverlay(title, text)
+	viewer.returnTo = m.overlay
+	m.openOverlay(viewer)
+	return nil
+}
+
+// pagerCmd is an external pager resolved on PATH, with the name the user asked
+// for and the arguments that came with it.
+type pagerCmd struct {
+	name string
+	path string
+	args []string
+}
+
+// pagerCandidates are searched when neither PIE_PAGER nor PAGER names a
+// program. more ships with Windows, so the chain degrades instead of failing
+// on a platform without less.
+var pagerCandidates = []string{"less", "most", "more"}
+
+// resolvePager picks the external pager for the Context panel's optional
+// "Open in ..." row. PIE_PAGER wins over PAGER, so a shell-wide pager can stay
+// set to something else. A value may carry arguments ("less -R"); it is split
+// on whitespace, so a quoted argument is not supported.
+func resolvePager() (pagerCmd, bool) {
+	for _, env := range []string{"PIE_PAGER", "PAGER"} {
+		fields := strings.Fields(os.Getenv(env))
+		if len(fields) == 0 {
+			continue
+		}
+		if path, err := exec.LookPath(fields[0]); err == nil {
+			return pagerCmd{name: fields[0], path: path, args: fields[1:]}, true
+		}
+	}
+	for _, name := range pagerCandidates {
+		if path, err := exec.LookPath(name); err == nil {
+			return pagerCmd{name: name, path: path}, true
+		}
+	}
+	return pagerCmd{}, false
+}
+
+// pagerText hands text to an external pager through a temporary file and
+// returns to the Context panel when the pager exits.
+func (m *Model) pagerText(name, text string, pager pagerCmd) tea.Cmd {
 	if strings.TrimSpace(text) == "" {
 		m.setToast("nothing to show")
 		return nil
@@ -110,12 +176,10 @@ func (m *Model) viewText(name, text string) tea.Cmd {
 		return nil
 	}
 	_ = file.Close()
-	pager := strings.TrimSpace(os.Getenv("PAGER"))
-	if pager == "" {
-		pager = "less"
-	}
-	fields := strings.Fields(pager)
-	command := exec.Command(fields[0], append(fields[1:], file.Name())...)
+	// Copy the arguments first: a second press must not append into the spare
+	// capacity of the slice this row captured.
+	args := append(append([]string{}, pager.args...), file.Name())
+	command := exec.Command(pager.path, args...)
 	return tea.ExecProcess(command, func(err error) tea.Msg {
 		_ = os.Remove(file.Name())
 		return contextViewMsg{err: err}

@@ -1403,7 +1403,7 @@ func (m *Model) View() string {
 func (m *Model) bodyLines() []string {
 	if m.overlay != nil {
 		box := strings.Split(m.overlay.View(m.styles), "\n")
-		if m.overlay.kind == overlaySettings {
+		if m.overlay.isPage() {
 			// A page has a width cap, so center it on wide terminals instead of
 			// leaving a gap on the right.
 			frameWidth := m.frameWidth()

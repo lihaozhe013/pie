@@ -2156,6 +2156,10 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
+	if o.kind == overlayViewer {
+		return m.handleViewerKey(msg)
+	}
+
 	// A pending delete only survives until the next key press, so confirming
 	// really is two ctrl+d presses with nothing in between.
 	if o.sessionPicker() && key != "ctrl+d" && o.deleteArm != "" {

@@ -124,8 +124,9 @@ subagents, no second agent loop, no parallel protocol.
 - Session search from `/search [query]`: names, working directories, and
   transcript text across the session store, with a snippet and resume action
 - A Context panel from `/context` fed by the bridge: the live tool list with
-  active state and descriptions, system-prompt size, work mode, and a pager
-  view of the prompt
+  active state and descriptions, system-prompt size, work mode, and a
+  read-only page showing the prompt itself (`y` copies it). An external pager
+  is offered on a second row only when one is installed
 - Image attachments through `/image <path> [prompt]`: the file is read,
   base64-encoded, and sent with the prompt through pi's existing image support.
   `/paste-image` handles screenshots the other way: it copies the clipboard

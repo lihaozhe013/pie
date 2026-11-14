@@ -23,7 +23,14 @@ const (
 	overlayEditor
 	overlaySettings
 	overlayAuth
+	overlayViewer
 )
+
+// isPage reports whether the overlay is a page that fills the transcript area
+// instead of a dialog floating in it.
+func (o *overlay) isPage() bool {
+	return o.kind == overlaySettings || o.kind == overlayViewer
+}
 
 // pickerItem is one selectable row. Keywords carries extra searchable text,
 // such as help and the current value, that is not shown next to the label.
@@ -52,6 +59,7 @@ type overlay struct {
 	width     int
 	height    int
 	settings  *settingsState
+	viewer    viewerState
 
 	// authProvider, authURL, and authCode carry one provider sign-in step:
 	// the authorization page to open, and the device code to type into it.
@@ -240,6 +248,9 @@ func (o *overlay) Update(msg tea.Msg) tea.Cmd {
 		var cmd tea.Cmd
 		o.editor, cmd = o.editor.Update(msg)
 		return cmd
+	case overlayViewer:
+		// The read-only page has no widget; handleViewerKey owns its keys.
+		return nil
 	default:
 		return nil
 	}
@@ -249,9 +260,9 @@ func (o *overlay) Update(msg tea.Msg) tea.Cmd {
 func (o *overlay) Resize(width, height int) {
 	boxWidth := width - 8
 	maxWidth := 72
-	if o.kind == overlaySettings {
-		// A settings page is a page, not a dialog: it fills the transcript
-		// area and only gives up its border columns.
+	if o.isPage() {
+		// A page fills the transcript area and only gives up its border
+		// columns.
 		boxWidth = width - 2
 		maxWidth = 118
 	}
@@ -278,6 +289,9 @@ func (o *overlay) View(st styles) string {
 			return st.overlayBox.Render("settings unavailable")
 		}
 		return o.settings.View(st, o.width, o.height)
+	}
+	if o.kind == overlayViewer {
+		return o.renderViewer(st)
 	}
 
 	var body strings.Builder
