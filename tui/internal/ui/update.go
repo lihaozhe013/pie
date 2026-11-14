@@ -1087,6 +1087,18 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		overlay.action = "session-name"
 		m.openOverlay(overlay)
 		return nil, true
+	case "/revert":
+		if m.busy {
+			m.setToast("stop the current turn before reverting")
+			return nil, true
+		}
+		// A fork replaces the session, so messages still queued in pi would be
+		// dropped with it.
+		if len(m.queue.Steering) > 0 || len(m.queue.FollowUp) > 0 {
+			m.setToast("clear the queued messages before reverting")
+			return nil, true
+		}
+		return m.startRevert(), true
 	case "/fork":
 		if m.busy {
 			m.setToast("stop the current turn before forking")
@@ -2182,6 +2194,11 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.openSettingsOverlay()
 			return m, nil
 		}
+		if o.kind == overlayConfirm && o.action == "revert" {
+			m.closeOverlay()
+			m.setToast("revert cancelled")
+			return m, nil
+		}
 		m.closeOverlay()
 		return m, nil
 
@@ -2332,6 +2349,22 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 }
 
 func (m *Model) answerConfirm(confirmed bool) tea.Cmd {
+	o := m.overlay
+	if o.action == "revert" {
+		entryID := o.confirmValue
+		m.closeOverlay()
+		if !confirmed {
+			m.setToast("revert cancelled")
+			return nil
+		}
+		// The overlay blocks input, but the turn can still have been started
+		// by a queued prompt settling while the dialog was open.
+		if m.busy {
+			m.setToast("stop the current turn before reverting")
+			return nil
+		}
+		return m.revertSession(entryID)
+	}
 	id := m.overlay.requestID
 	client := m.client
 	m.closeOverlay()

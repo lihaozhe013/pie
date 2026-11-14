@@ -981,6 +981,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.showContextPanel()
 		return m, nil
 
+	case revertTargetMsg:
+		return m.applyRevertTarget(msg)
+
 	case forkMessagesMsg:
 		return m.applyForkMessages(msg)
 

@@ -319,7 +319,12 @@ left alone with the error shown instead of being replaced.
 `/fork` and `/clone` are RPC operations that replace the active session: after
 the command the client refetches `get_messages`, state, stats, and entries, so
 the transcript and header belong to the new session. A fork puts the chosen
-prompt back in the editor, which is what the web UI does. `/tree` is read-only:
+prompt back in the editor, which is what the web UI does. `/revert` is the
+one-step form of that operation: it asks for confirmation, then forks from the
+newest user prompt on the active branch and restores it in the editor. pi's RPC
+has no `navigate_tree`, which is the in-session rewind the web UI uses through
+the SDK, so the terminal client never truncates the conversation itself; the
+previous session stays in history. `/tree` is read-only:
 `get_tree` is printed into the transcript because the RPC has no command to make
 an arbitrary node active; forking remains the way to branch. Enter-to-send is a
 terminal-only preference because alt+enter is the only portable send chord when

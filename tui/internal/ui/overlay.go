@@ -70,6 +70,10 @@ type overlay struct {
 	// returnTo is the overlay this one was opened from, restored on close.
 	returnTo *overlay
 
+	// confirmValue carries the client-side payload of an overlayConfirm that
+	// pie answers itself, such as the entry id /revert forks from.
+	confirmValue string
+
 	// deleteArm is the session row the first ctrl+d selected, and deleteArmAt
 	// when it happened. A second press on the same row inside
 	// sessionDeleteWindow deletes it, so one stray chord cannot remove a
@@ -118,6 +122,19 @@ func newConfirmOverlay(request *rpc.ExtensionUIRequestEvent) *overlay {
 		title:     request.Title,
 		message:   withTimeout(request.Message, request.Timeout),
 		requestID: request.ID,
+	}
+}
+
+// newConfirmMessageOverlay builds a confirmation pie answers itself instead of
+// forwarding to an extension. answerConfirm reads the action and confirmValue
+// to run the client-side work.
+func newConfirmMessageOverlay(action, title, message, value string) *overlay {
+	return &overlay{
+		kind:         overlayConfirm,
+		action:       action,
+		title:        title,
+		message:      message,
+		confirmValue: value,
 	}
 }
 
@@ -301,7 +318,14 @@ func (o *overlay) View(st styles) string {
 		o.renderPicker(&body, st)
 	case overlayConfirm:
 		if o.message != "" {
-			body.WriteString(o.message)
+			message := o.message
+			// A dialog pie composes itself has no extension to size its text, so
+			// it wraps to the box. Extension messages arrive as their author sent
+			// them.
+			if o.requestID == "" {
+				message = wrapPlain(message, maxInt(20, o.width-6))
+			}
+			body.WriteString(message)
 			body.WriteString("\n\n")
 		}
 		body.WriteString(st.overlayHint.Render("enter or y to confirm · esc or n to cancel"))

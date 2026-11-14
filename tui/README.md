@@ -117,8 +117,9 @@ subagents, no second agent loop, no parallel protocol.
   picker reads the newest name even when a long conversation pushed it far from
   the end of the file. Failures stay out of the transcript
 - Branch tools: `/fork` lists forkable user messages and restores the chosen
-  prompt to the editor, `/clone` duplicates the branch, and `/tree` prints the
-  session tree with the current leaf marked
+  prompt to the editor, `/revert` goes back one turn after a confirmation and
+  restores the last prompt, `/clone` duplicates the branch, and `/tree` prints
+  the session tree with the current leaf marked
 - A General toggle for whether Enter sends or inserts a newline
   (alt+enter sends when Enter is a newline)
 - Session search from `/search [query]`: names, working directories, and
@@ -308,6 +309,7 @@ memory from other CLIs keeps working.
 | `/paste-image` | | save a clipboard image into the working directory and insert its `@` reference |
 | `/context` | `/tools-view` | system prompt and tool definitions published by the bridge |
 | `/search` | | search session names, folders, and transcripts |
+| `/revert` | `/undo`, `/rewind` | go back one turn: confirms, then restores the last prompt in the editor |
 | `/fork` | | fork from a user message; the prompt returns to the editor |
 | `/clone` | | clone the current branch into a new session |
 | `/tree` | | print the session tree with the current leaf marked |

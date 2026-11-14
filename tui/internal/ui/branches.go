@@ -23,10 +23,19 @@ type forkMessage struct {
 
 type forkResultMsg struct {
 	text      string
+	reverted  bool
 	cancelled bool
 	messages  []rpc.Message
 	state     *rpc.State
 	err       error
+}
+
+// revertTargetMsg is the user message /revert would go back to.
+type revertTargetMsg struct {
+	entryID string
+	text    string
+	found   bool
+	err     error
 }
 
 type cloneResultMsg struct {
@@ -82,20 +91,30 @@ func (m *Model) applyForkMessages(msg forkMessagesMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) forkSession(entryID string) tea.Cmd {
+	return m.forkSessionFor(entryID, false)
+}
+
+// revertSession forks the active session at entryID: the prompt returns to the
+// editor and the trimmed conversation opens as a new session.
+func (m *Model) revertSession(entryID string) tea.Cmd {
+	return m.forkSessionFor(entryID, true)
+}
+
+func (m *Model) forkSessionFor(entryID string, reverted bool) tea.Cmd {
 	client := m.client
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
 		response, err := client.DoOK(ctx, rpc.Fork(entryID))
 		if err != nil {
-			return forkResultMsg{err: err}
+			return forkResultMsg{err: err, reverted: reverted}
 		}
 		var payload struct {
 			Text      string `json:"text"`
 			Cancelled bool   `json:"cancelled"`
 		}
 		_ = response.DecodeData(&payload)
-		msg := forkResultMsg{text: payload.Text, cancelled: payload.Cancelled}
+		msg := forkResultMsg{text: payload.Text, cancelled: payload.Cancelled, reverted: reverted}
 		if payload.Cancelled {
 			return msg
 		}
@@ -115,13 +134,96 @@ func (m *Model) forkSession(entryID string) tea.Cmd {
 	}
 }
 
-func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
+// startRevert resolves the last prompt of the active branch and asks for
+// confirmation. pi's RPC has no in-session tree navigation, so the revert is a
+// fork from that message: the current session stays in history.
+func (m *Model) startRevert() tea.Cmd {
+	client := m.client
+	return func() tea.Msg {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		response, err := client.DoOK(ctx, rpc.GetForkMessages())
+		if err != nil {
+			return revertTargetMsg{err: err}
+		}
+		var payload struct {
+			Messages []forkMessage `json:"messages"`
+		}
+		if err := response.DecodeData(&payload); err != nil {
+			return revertTargetMsg{err: err}
+		}
+		if len(payload.Messages) == 0 {
+			return revertTargetMsg{}
+		}
+		target := payload.Messages[len(payload.Messages)-1]
+		// get_fork_messages walks the whole file, so a session the Web UI
+		// navigated backwards can end with prompts on an abandoned branch.
+		// The newest prompt the active leaf reaches is the revert target.
+		if treeResponse, treeErr := client.DoOK(ctx, rpc.GetTree()); treeErr == nil {
+			if tree, parseErr := session.ParseTree(treeResponse.Data); parseErr == nil {
+				active := activeEntryIDs(tree)
+				for i := len(payload.Messages) - 1; i >= 0; i-- {
+					if active[payload.Messages[i].EntryID] {
+						target = payload.Messages[i]
+						break
+					}
+				}
+			}
+		}
+		return revertTargetMsg{entryID: target.EntryID, text: target.Text, found: true}
+	}
+}
+
+func (m *Model) applyRevertTarget(msg revertTargetMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
-		m.addError("fork: " + msg.err.Error())
+		m.addError("revert: " + msg.err.Error())
+		return m, nil
+	}
+	if !msg.found {
+		m.setToast("nothing to revert")
+		return m, nil
+	}
+	preview := truncateLine(strings.Join(strings.Fields(msg.text), " "), 160)
+	body := "\"" + preview + "\"\n\n" +
+		"This forks a new session from that message and puts it back in the editor. " +
+		"The current session stays in history."
+	m.openOverlay(newConfirmMessageOverlay("revert", "Revert to the last prompt", body, msg.entryID))
+	return m, nil
+}
+
+// activeEntryIDs returns every entry the current leaf reaches through its
+// parent chain.
+func activeEntryIDs(tree session.Tree) map[string]bool {
+	parents := make(map[string]string)
+	var walk func(nodes []session.TreeNode)
+	walk = func(nodes []session.TreeNode) {
+		for _, node := range nodes {
+			parents[node.ID] = node.ParentID
+			walk(node.Children)
+		}
+	}
+	walk(tree.Roots)
+	active := make(map[string]bool)
+	for id := tree.LeafID; id != ""; id = parents[id] {
+		if active[id] {
+			break
+		}
+		active[id] = true
+	}
+	return active
+}
+
+func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
+	label := "fork"
+	if msg.reverted {
+		label = "revert"
+	}
+	if msg.err != nil {
+		m.addError(label + ": " + msg.err.Error())
 		return m, nil
 	}
 	if msg.cancelled {
-		m.setToast("fork cancelled")
+		m.setToast(label + " cancelled")
 		return m, nil
 	}
 	m.sessionEpoch.Add(1)
@@ -135,6 +237,13 @@ func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
 	m.extensionTitle = ""
 	m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 	m.loadHistory(msg.messages)
+	if msg.reverted {
+		// A revert replaces the editor, so the draft that was there moves into
+		// the history ring instead of being lost.
+		if draft := strings.TrimSpace(m.composer.Value()); draft != "" {
+			m.composer.PushHistory(draft)
+		}
+	}
 	m.composer.SetText(msg.text)
 	m.completion.Refresh(m.composer.Value())
 	m.transcript.ScrollToBottom()
@@ -143,8 +252,13 @@ func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
 	m.autoTitleAttempts = 0
 	m.resetSessionNameWatch()
 	m.invalidateTitle()
-	m.addNotice("forked to a new session")
-	m.setToast("forked; the message is back in the editor")
+	if msg.reverted {
+		m.addNotice("reverted to the last prompt in a new session")
+		m.setToast("reverted; the prompt is back in the editor")
+	} else {
+		m.addNotice("forked to a new session")
+		m.setToast("forked; the message is back in the editor")
+	}
 	m.layout()
 	commands := []tea.Cmd{m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle()}
 	if auto := m.autoTitleFromHistory(msg.messages); auto != nil {

@@ -42,6 +42,7 @@ var builtinCommandTable = []builtinCommand{
 	{Name: "/paste-image", Detail: "save a clipboard image into the working directory and reference it"},
 	{Name: "/context", Detail: "system prompt and tool definitions", Aliases: []string{"/tools-view"}},
 	{Name: "/search", Detail: "search session names, folders, and transcripts"},
+	{Name: "/revert", Detail: "revert the last prompt and restore it in the editor", Aliases: []string{"/undo", "/rewind"}},
 	{Name: "/fork", Detail: "fork the session from a user message"},
 	{Name: "/clone", Detail: "clone the current branch into a new session"},
 	{Name: "/tree", Detail: "show the session tree"},
