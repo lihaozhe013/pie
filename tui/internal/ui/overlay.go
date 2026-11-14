@@ -60,6 +60,7 @@ type overlay struct {
 	height    int
 	settings  *settingsState
 	viewer    viewerState
+	artifact  *artifactState
 
 	// authProvider, authURL, and authCode carry one provider sign-in step:
 	// the authorization page to open, and the device code to type into it.

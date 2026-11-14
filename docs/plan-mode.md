@@ -96,6 +96,24 @@ treat the plan file as an ordinary project write and Plan mode's own write guard
   `edit`/`write` can update the plan during implementation, and the plan context keeps being
   injected.
 
+## Approval
+
+`Status: ready` means the plan is waiting for a human decision. The TUI approval flow is the
+only approval surface in this iteration; the Web UI remains read-only.
+
+- `/artifact` (alias `/plan`) opens the plan as a full-page artifact. `a` approves, `r` rejects
+  and asks for feedback, `m` switches the model, `y` copies, and `esc` closes.
+- Approval is revision-checked. The artifact hashes the displayed file, and the bridge command
+  `pie-plan-approve <revision>` refuses to change a file that no longer matches. A stale view
+  is reloaded instead of approved.
+- A successful approval sets the plan's `Status:` line to `in-progress`, appends a fresh
+  `pie:plan` entry, restores the preset that was active before Plan mode, and sends a normal
+  implementation prompt to the selected model.
+- Rejection keeps Plan mode active and sends the feedback as a normal prompt. The agent revises
+  the plan file and calls `update_plan` again; implementation does not start.
+- A truncated view, or a plan above the bridge's 256 KiB approval limit, cannot be approved from
+  the artifact. The full file remains readable directly.
+
 ## Compaction guarantee
 
 The plan file is never part of the message history. Three layers keep it available:
@@ -122,7 +140,8 @@ TUI:
 
 - `shift+tab` enters Plan mode and restores the previous preset on exit.
 - The status line reports `plan mode` and whether a plan file exists.
-- `/plan` opens the plan file in the read-only viewer; `y` copies and `esc` closes.
+- `/artifact` opens the plan artifact; `/plan` remains an alias. The action row exposes
+  `a approve`, `r reject`, and `m switch model` alongside the pager keys.
 - `/context` includes the plan path, status, and revision published by the bridge.
 
 Web UI:

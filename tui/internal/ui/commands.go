@@ -26,7 +26,7 @@ var builtinCommandTable = []builtinCommand{
 	{Name: "/mcp", Detail: "manage MCP servers"},
 	{Name: "/plugins", Detail: "manage Pi packages"},
 	{Name: "/preset", Detail: "change the tool preset", Aliases: []string{"/tools", "/tool"}},
-	{Name: "/plan", Detail: "view the Plan mode file"},
+	{Name: "/artifact", Detail: "review, approve, or reject the plan file", Aliases: []string{"/plan"}},
 	{Name: "/model", Detail: "switch model"},
 	{Name: "/login", Detail: "sign in to a provider"},
 	{Name: "/logout", Detail: "sign out of a provider"},

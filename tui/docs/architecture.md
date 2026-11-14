@@ -295,8 +295,13 @@ guidelines and a small `pie-plan` prompt section; a `context` hook re-reads the
 file before every model request and injects the plan or its outline. That hook
 is request-local, so compaction cannot remove it, and `session_compact` makes
 the next request say explicitly that the file is authoritative. The file is
-shared contract with the web UI; see [Plan mode](../../docs/plan-mode.md). `/plan`
-opens the file in the client's read-only viewer.
+shared contract with the web UI; see [Plan mode](../../docs/plan-mode.md).
+`/artifact` (alias `/plan`) opens the file as a full-page artifact with pager
+keys and `a`/`r`/`m` actions. Approval sends the internal
+`/pie-plan-approve <revision>` bridge command, which sets the file's status to
+`in-progress` after checking the displayed revision, then restores the preset
+that preceded Plan mode and sends a normal implementation prompt. Rejection
+opens a feedback input and keeps Plan mode active.
 
 Provider sign-in is bridged the same way. `pi --mode rpc` has no provider list,
 login, or logout command, and `get_available_models` only reports providers

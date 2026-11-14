@@ -1125,7 +1125,7 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		return nil, true
 	case "/context":
 		return m.openContext(), true
-	case "/plan":
+	case "/artifact":
 		return m.openPlan(), true
 	case "/image":
 		return m.sendImage(argument), true
@@ -1182,6 +1182,7 @@ func (m *Model) helpItems() []pickerItem {
 		{"ctrl+p", "open the command palette"},
 		{"shift+up / shift+down", "raise or lower the reasoning level"},
 		{"shift+tab", "toggle plan mode and restore the previous preset"},
+		{"a / r / m", "in /artifact: approve, reject, or switch model"},
 		{"ctrl+t", "show/hide thinking previews"},
 		{"ctrl+o", "expand thinking, tool output, and diffs"},
 		{"ctrl+l", "clear the scrollback"},
@@ -1931,6 +1932,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.plan = session.Plan{}
 		m.hasPlan = false
 		m.presetBeforePlan = ""
+		m.planApprovalPending = false
 		m.logEntries = nil
 		m.transcript.Add(m.welcomeBlock())
 		m.addNotice("started a new session")
@@ -1955,6 +1957,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.plan = session.Plan{}
 		m.hasPlan = false
 		m.presetBeforePlan = ""
+		m.planApprovalPending = false
 		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle())
 
 	case "compact":
@@ -2357,6 +2360,20 @@ func (m *Model) selectOverlayItem() tea.Cmd {
 
 func (m *Model) answerConfirm(confirmed bool) tea.Cmd {
 	o := m.overlay
+	if o.action == "plan-approve" {
+		artifact := o.returnTo
+		revision := o.confirmValue
+		m.closeOverlay()
+		if !confirmed {
+			m.setToast("plan not approved")
+			return nil
+		}
+		if artifact == nil || artifact.artifact == nil {
+			m.setToast("plan file is no longer open")
+			return nil
+		}
+		return m.approvePlan(artifact.artifact.path, revision)
+	}
 	if o.action == "revert" {
 		entryID := o.confirmValue
 		m.closeOverlay()
@@ -2388,6 +2405,18 @@ func (m *Model) answerInput(value string) tea.Cmd {
 	client := m.client
 	m.closeOverlay()
 
+	if action == "plan-reject" {
+		if m.overlay != nil && m.overlay.action == "artifact" {
+			m.overlay = nil
+			m.layout()
+		}
+		feedback := strings.TrimSpace(value)
+		if feedback == "" {
+			m.setToast("plan not approved \u00b7 Plan mode stays on")
+			return nil
+		}
+		return m.dispatchCommand(planRejectPrompt(feedback))
+	}
 	if action == "session-name" {
 		return m.setSessionName(value)
 	}

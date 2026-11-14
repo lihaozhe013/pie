@@ -93,6 +93,22 @@ func (v *viewerState) pageRows() int {
 func (m *Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	o := m.overlay
 	v := &o.viewer
+	if m.planApprovalPending {
+		if msg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+		return m, nil
+	}
+	if o.artifact != nil {
+		switch msg.String() {
+		case "a":
+			return m, m.confirmApprovePlan()
+		case "r":
+			return m, m.openPlanReject()
+		case "m":
+			return m, m.openArtifactModelPicker()
+		}
+	}
 	switch msg.String() {
 	case "ctrl+c":
 		return m, tea.Quit
@@ -116,13 +132,36 @@ func (m *Model) handleViewerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// artifactActionLine names the actions available for this plan state. Starting
+// implementation is never offered for a truncated or already approved plan.
+func (o *overlay) artifactActionLine() string {
+	if o.artifact == nil {
+		return ""
+	}
+	actions := make([]string, 0, 3)
+	status := strings.ToLower(strings.TrimSpace(o.artifact.status))
+	if o.artifact.planMode && !o.artifact.truncated && strings.TrimSpace(o.artifact.revision) != "" && status != "in-progress" && status != "done" {
+		actions = append(actions, "a approve")
+	}
+	if o.artifact.planMode {
+		actions = append(actions, "r reject")
+	}
+	actions = append(actions, "m switch model")
+	return strings.Join(actions, " \u00b7 ")
+}
+
 // renderViewer draws the page: a head with the visible row range, the text
-// rows, and one hint line.
+// rows, an optional action row, and one hint line.
 func (o *overlay) renderViewer(st styles) string {
 	textWidth := maxInt(20, o.width-4)
-	contentRows := maxInt(4, o.height-4)
-	// Three fixed rows: head, rule, and hint.
-	o.viewer.rows = maxInt(1, contentRows-3)
+	fixedRows := 3
+	actionLine := ""
+	if o.artifact != nil {
+		fixedRows = 4
+		actionLine = o.artifactActionLine()
+	}
+	contentRows := maxInt(fixedRows+1, o.height-4)
+	o.viewer.rows = maxInt(1, contentRows-fixedRows)
 	o.viewer.wrap(textWidth)
 	o.viewer.clamp()
 
@@ -147,6 +186,9 @@ func (o *overlay) renderViewer(st styles) string {
 		// The wrap cache already broke every line to the content width, so a
 		// row needs no further truncation.
 		out = append(out, o.viewer.lines[index])
+	}
+	if o.artifact != nil {
+		out = append(out, st.overlayHint.Render(truncateLine(actionLine, textWidth)))
 	}
 	hint := "y copy \u00b7 esc close"
 	if len(o.viewer.lines) > o.viewer.rows {

@@ -218,21 +218,27 @@ func (m *Model) cyclePreset(delta int) tea.Cmd {
 	return m.applyPreset(selections[next])
 }
 
+// planExitSelection is the preset an approval restores. The plan selection
+// itself is never restored, so a stale preference cannot trap the toggle.
+func (m *Model) planExitSelection() string {
+	selection := m.presetBeforePlan
+	if selection == "" || selection == "plan" {
+		selection = "configured"
+		if m.prefs != nil {
+			if saved := m.prefs.ToolPreset(); saved != "" && saved != "plan" {
+				selection = saved
+			}
+		}
+	}
+	return selection
+}
+
 // togglePlan enters plan mode or restores the preset that was active before
 // it. The plan selection itself is never restored from the saved preset, so a
 // stale preference cannot trap the toggle.
 func (m *Model) togglePlan() tea.Cmd {
 	if m.currentMode == "plan" || m.currentPresetID() == "plan" {
-		selection := m.presetBeforePlan
-		if selection == "" || selection == "plan" {
-			selection = "configured"
-			if m.prefs != nil {
-				if saved := m.prefs.ToolPreset(); saved != "" && saved != "plan" {
-					selection = saved
-				}
-			}
-		}
-		return m.applyPreset(selection)
+		return m.applyPreset(m.planExitSelection())
 	}
 	return m.applyPreset("plan")
 }
@@ -245,6 +251,73 @@ func (m *Model) applyPreset(selection string) tea.Cmd {
 // applyPresetQuiet applies a preset without a toast, for the startup restore.
 func (m *Model) applyPresetQuiet(selection string) tea.Cmd {
 	return m.applyPresetWithOptions(selection, true)
+}
+
+// presetApplication is the part of a preset that can be sent to the bridge
+// from a command goroutine. Preparing it happens on the UI goroutine, so the
+// command never reads mutable model state.
+type presetApplication struct {
+	selection   string
+	toolCommand string
+	targetMode  string
+}
+
+// preparePreset resolves a selection into the commands that pin its tools and
+// mode. It does not change the session.
+func (m *Model) preparePreset(selection string) (presetApplication, bool) {
+	tools, includeExtensions, ok := m.presetTools(selection)
+	if !ok {
+		return presetApplication{}, false
+	}
+	toolCommand := "/pie-tools configured"
+	if selection != "configured" {
+		policy := "all"
+		if !includeExtensions {
+			policy = "selected"
+		}
+		toolCommand = "/pie-tools " + policy
+		if len(tools) > 0 {
+			toolCommand += " " + strings.Join(tools, ",")
+		}
+	}
+	targetMode := ""
+	if preset, ok := config.BuiltinPresetByID(selection); ok {
+		targetMode = preset.WorkMode
+	}
+	return presetApplication{selection: selection, toolCommand: toolCommand, targetMode: targetMode}, true
+}
+
+// applyPresetCommand applies a prepared preset. forceMode writes the work mode
+// even when entries were recently read; approval uses it so implementation can
+// never start while Plan mode is still active.
+func applyPresetCommand(ctx context.Context, client Client, app presetApplication, forceMode bool) error {
+	if _, err := client.DoOK(ctx, rpc.Prompt(app.toolCommand)); err != nil {
+		return err
+	}
+	if forceMode {
+		modeArg := "none"
+		if app.targetMode != "" {
+			modeArg = app.targetMode
+		}
+		_, err := client.DoOK(ctx, rpc.Prompt("/pie-mode "+modeArg))
+		return err
+	}
+
+	// The mode lives in its own entry; write it only when it changes, so a
+	// repeated apply does not grow the session log.
+	entries, err := fetchEntries(ctx, client)
+	if err != nil {
+		return nil
+	}
+	if session.ReadWorkMode(entries) == app.targetMode {
+		return nil
+	}
+	modeArg := "none"
+	if app.targetMode != "" {
+		modeArg = app.targetMode
+	}
+	_, err = client.DoOK(ctx, rpc.Prompt("/pie-mode "+modeArg))
+	return err
 }
 
 func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
@@ -260,7 +333,7 @@ func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
 		}
 		return nil
 	}
-	tools, includeExtensions, ok := m.presetTools(selection)
+	app, ok := m.preparePreset(selection)
 	if !ok {
 		if !quiet {
 			m.setToast("preset no longer exists")
@@ -270,11 +343,7 @@ func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
 
 	// A built-in preset may carry a work mode; custom presets and the plain
 	// tool lists clear it. Plan remembers what Shift+Tab restores on exit.
-	targetMode := ""
-	if preset, ok := config.BuiltinPresetByID(selection); ok {
-		targetMode = preset.WorkMode
-	}
-	if targetMode == "plan" {
+	if app.targetMode == "plan" {
 		if current := m.currentPresetID(); current != "" && current != "plan" {
 			m.presetBeforePlan = current
 		}
@@ -286,41 +355,7 @@ func (m *Model) applyPresetWithOptions(selection string, quiet bool) tea.Cmd {
 		msg := presetAppliedMsg{selection: selection, quiet: quiet}
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
-
-		if selection == "configured" {
-			if _, err := client.DoOK(ctx, rpc.Prompt("/pie-tools configured")); err != nil {
-				msg.err = err
-				return msg
-			}
-		} else {
-			policy := "all"
-			if !includeExtensions {
-				policy = "selected"
-			}
-			command := "/pie-tools " + policy
-			if len(tools) > 0 {
-				command += " " + strings.Join(tools, ",")
-			}
-			if _, err := client.DoOK(ctx, rpc.Prompt(command)); err != nil {
-				msg.err = err
-				return msg
-			}
-		}
-
-		// The mode lives in its own entry; write it only when it changes, so a
-		// repeated apply does not grow the session log.
-		if entries, err := fetchEntries(ctx, client); err == nil {
-			if session.ReadWorkMode(entries) != targetMode {
-				modeArg := "none"
-				if targetMode != "" {
-					modeArg = targetMode
-				}
-				if _, err := client.DoOK(ctx, rpc.Prompt("/pie-mode "+modeArg)); err != nil {
-					msg.err = err
-					return msg
-				}
-			}
-		}
+		msg.err = applyPresetCommand(ctx, client, app, false)
 		return msg
 	}
 }

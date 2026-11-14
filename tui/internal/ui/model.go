@@ -382,6 +382,9 @@ type Model struct {
 	// presetBeforePlan is the preset Shift+Tab restores when it leaves plan
 	// mode. It is cleared whenever a non-plan preset is applied.
 	presetBeforePlan string
+	// planApprovalPending blocks a second approval while the bridge, file
+	// check, and preset restore run as one ordered command.
+	planApprovalPending bool
 
 	goalAvailable bool
 	goalEnabled   bool
@@ -907,6 +910,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case planMsg:
 		return m.applyPlanMsg(msg)
+
+	case planApprovalMsg:
+		m.planApprovalPending = false
+		if msg.err != nil {
+			m.addError("plan approval: " + msg.err.Error())
+			m.overlay = nil
+			m.layout()
+			return m, m.openPlan()
+		}
+		if m.prefs != nil && m.prefs.ToolPreset() != msg.selection {
+			_ = m.prefs.SetToolPreset(msg.selection)
+		}
+		m.presetBeforePlan = ""
+		m.overlay = nil
+		m.layout()
+		m.openQueuedDialog()
+		m.setToast("plan approved \u00b7 starting implementation")
+		return m, m.dispatchCommand(planImplementationPrompt(msg.path))
 
 	case entriesMsg:
 		if msg.err != nil {
@@ -1578,7 +1599,7 @@ func (m *Model) renderEditor() string {
 		case "plan":
 			planHint := "no plan yet"
 			if m.hasPlan {
-				planHint = "plan file"
+				planHint = "/artifact review"
 			}
 			hint = "plan mode · " + planHint + " · writes blocked · " + hint
 		case "autonomous":

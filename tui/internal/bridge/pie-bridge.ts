@@ -313,6 +313,37 @@ function parsePlanContent(content) {
   return { title, status, outline: buildPlanOutline(lines) };
 }
 
+// setPlanStatus rewrites the status line while preserving the rest of the plan.
+// A plan without a status line gets one after its first heading.
+function setPlanStatus(content, status) {
+  if (!PLAN_STATUSES.has(status)) throw new Error("invalid plan status");
+  const trailing = content.endsWith("\n");
+  const lines = content.split(/\r?\n/);
+  let replaced = false;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^status:\s*(draft|ready|in-progress|done)\b/i.test(lines[i])) {
+      lines[i] = "Status: " + status;
+      replaced = true;
+      break;
+    }
+  }
+  if (!replaced) {
+    const heading = lines.findIndex((line) => /^#\s+/.test(line));
+    if (heading < 0) {
+      lines.unshift("Status: " + status, "");
+    } else {
+      const insertAt = heading + 1;
+      const blankAfter = lines[insertAt] === "";
+      lines.splice(insertAt, 0, "Status: " + status);
+      if (!blankAfter) lines.splice(insertAt + 1, 0, "");
+    }
+  }
+  const result = lines.join("\n");
+  if (trailing && !result.endsWith("\n")) return result + "\n";
+  if (!trailing && result.endsWith("\n")) return result.slice(0, -1);
+  return result;
+}
+
 function readPlanSnapshot(path, maxBytes = PLAN_MAX_BYTES) {
   if (!isInsidePlansDirectory(path)) throw new Error("plan path is outside pie-plans");
   if (lstatSync(path).isSymbolicLink()) throw new Error("plan file must not be a symbolic link");
@@ -1623,6 +1654,37 @@ export default function (pi) {
         } catch (error) {
           ctx.ui.notify("pie-mode: could not prepare the plan file: " + String(error), "error");
         }
+      }
+    },
+  });
+
+  pi.registerCommand("pie-plan-approve", {
+    description: "Mark the current plan approved (pie internal)",
+    handler: async (args, ctx) => {
+      const revision = String(args || "").trim().toLowerCase();
+      if (!/^[a-f0-9]{64}$/.test(revision)) {
+        ctx.ui.notify("pie-plan-approve: expected the plan revision", "error");
+        return;
+      }
+      if (readWorkMode(ctx.sessionManager.getEntries()) !== "plan") {
+        ctx.ui.notify("pie-plan-approve: Plan mode is not active", "error");
+        return;
+      }
+      const plan = readPlanForSession(ctx.sessionManager);
+      if (!plan) {
+        ctx.ui.notify("pie-plan-approve: no plan file", "error");
+        return;
+      }
+      if (!plan.revision || plan.revision !== revision) {
+        ctx.ui.notify("pie-plan-approve: the plan file changed; read it again", "error");
+        return;
+      }
+      try {
+        writePlanContent(plan.path, setPlanStatus(plan.content, "in-progress"));
+        const updated = readPlanSnapshot(plan.path);
+        pi.appendEntry(PLAN_ENTRY_TYPE, planEntryData(updated));
+      } catch (error) {
+        ctx.ui.notify("pie-plan-approve: " + String(error), "error");
       }
     },
   });
