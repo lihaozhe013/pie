@@ -16,10 +16,12 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/term"
 
 	"github.com/lihaozhe013/pie/tui/internal/bridge"
 	"github.com/lihaozhe013/pie/tui/internal/rpc"
@@ -183,6 +185,8 @@ func run(args []string, stderr io.Writer) int {
 		})
 	}
 
+	syncedStdout := newSyncOutput(os.Stdout)
+
 	model := ui.New(client, ui.Options{
 		SessionDir:   cfg.sessionDir,
 		CWD:          cwd,
@@ -191,14 +195,25 @@ func run(args []string, stderr io.Writer) int {
 		Restart:      restart,
 		Mouse:        !cfg.noMouse,
 		ResumePicker: cfg.resume,
+		SetTitle:     ui.TerminalTitleCommand(syncedStdout),
 	})
 
 	options := []tea.ProgramOption{
 		tea.WithAltScreen(),
 		tea.WithContext(ctx),
+		tea.WithOutput(syncedStdout),
 	}
 	if !cfg.noMouse {
 		options = append(options, tea.WithMouseCellMotion())
+	}
+
+	isTerm := term.IsTerminal(os.Stdout.Fd())
+	if isTerm {
+		// Save current icon name and window title to terminal stack so exit restores it.
+		_, _ = syncedStdout.WriteString("\x1b[22;0t")
+		defer func() {
+			_, _ = syncedStdout.WriteString("\x1b[23;0t")
+		}()
 	}
 
 	program := tea.NewProgram(model, options...)
@@ -213,7 +228,7 @@ func run(args []string, stderr io.Writer) int {
 
 	// The alternate screen is gone, so the card printed here stays visible at
 	// the shell prompt and records which conversation was just left.
-	fmt.Fprint(os.Stdout, "\n"+model.ExitSummary()+"\n")
+	fmt.Fprint(syncedStdout, "\n"+model.ExitSummary()+"\n")
 
 	shutdownStart := time.Now()
 	if err := client.Close(); err != nil {
@@ -370,6 +385,30 @@ func printDependencyHelp(stderr io.Writer, err error) {
 	fmt.Fprintln(stderr, "")
 	fmt.Fprintln(stderr, "Point the client at a specific binary instead:")
 	fmt.Fprintf(stderr, "  pie --pi <path-to-pi>  (or set %s)\n", binEnv)
+}
+
+// syncOutput wraps an *os.File with a mutex so concurrent writes from Bubble
+// Tea's renderer ticker and one-off terminal control sequences (such as OSC 0
+// title changes) never interleave. It implements term.File.
+type syncOutput struct {
+	*os.File
+	mu sync.Mutex
+}
+
+func newSyncOutput(f *os.File) *syncOutput {
+	return &syncOutput{File: f}
+}
+
+func (s *syncOutput) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.File.Write(p)
+}
+
+func (s *syncOutput) WriteString(str string) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return io.WriteString(s.File, str)
 }
 
 // debugLogger writes diagnostics to a file, never to stdout, because stdout is

@@ -59,6 +59,9 @@ type Options struct {
 	// Copy writes text to the clipboard. Nil installs the OSC52 and platform
 	// clipboard writer.
 	Copy func(string) tea.Cmd
+	// SetTitle sets the terminal tab and window title. Nil installs the OSC 0
+	// writer.
+	SetTitle func(string) tea.Cmd
 }
 
 // Timing constants for the event loop.
@@ -264,6 +267,11 @@ type Model struct {
 	enterToSend  bool
 	mouseOn      bool
 	copyFn       func(string) tea.Cmd
+	setTitleFn   func(string) tea.Cmd
+
+	lastTerminalTitle string
+	firstUserPrompt   string
+	extensionTitle    string
 
 	busy         bool
 	frame        int
@@ -408,10 +416,14 @@ func New(client Client, opts Options) *Model {
 		showThinking:  true,
 		mouseOn:       opts.Mouse,
 		copyFn:        opts.Copy,
+		setTitleFn:    opts.SetTitle,
 		resumePending: opts.ResumePicker,
 	}
 	if m.copyFn == nil {
 		m.copyFn = defaultCopyCommand()
+	}
+	if m.setTitleFn == nil {
+		m.setTitleFn = defaultSetTitleCommand()
 	}
 	if err != nil {
 		m.configErr = err
@@ -546,9 +558,9 @@ func (m *Model) refreshEnabledModels() {
 	m.enabledModels, m.modelPins, _ = modelcatalog.EnabledSet(patterns, present, m.catalog.Models())
 }
 
-// Init starts the event pump, the startup handshake, and the idle heartbeat.
+// Init starts the event pump, the startup handshake, the idle heartbeat, and initial title sync.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.waitEvent(), m.handshake(), m.heartbeat())
+	return tea.Batch(m.waitEvent(), m.handshake(), m.heartbeat(), m.syncTerminalTitle())
 }
 
 // heartbeat keeps time-based UI state (toast expiry) honest while idle.
@@ -660,7 +672,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.state.SessionName != "" {
 			m.noteSessionName(msg.state.SessionName)
 		}
-		return m, nil
+		return m, m.syncTerminalTitle()
 
 	case heartbeatMsg:
 		if m.toast != "" && time.Now().After(m.toastUntil) {
@@ -872,7 +884,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.stats = *msg.stats
 		}
 		m.loadHistory(msg.messages)
+		m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 		var commands []tea.Cmd
+		if syncCmd := m.syncTerminalTitle(); syncCmd != nil {
+			commands = append(commands, syncCmd)
+		}
 		commands = append(commands, m.loadEntries())
 		if msg.stats == nil {
 			commands = append(commands, m.refreshStats())
@@ -1101,7 +1117,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoTitleAttempts = 0
 		m.sessionEpoch.Add(1)
 		m.invalidateTitle()
-		return m, nil
+		return m, m.syncTerminalTitle()
 
 	case titleMsg:
 		if msg.requestID != 0 && msg.requestID != m.titleRequest {
@@ -1131,7 +1147,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.autoTitlePending = false
 			m.autoTitleAttempts = 0
 			m.noteSessionName(msg.title)
-			return m, nil
+			return m, m.syncTerminalTitle()
 		}
 		if msg.err != nil {
 			m.addError("title: " + msg.err.Error())
@@ -1141,7 +1157,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.autoTitleAttempts = 0
 		m.noteSessionName(msg.title)
 		m.setToast("title: " + msg.title)
-		return m, nil
+		return m, m.syncTerminalTitle()
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -1176,6 +1192,9 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 	m.reloadCatalog()
 	m.completion.SetItems(m.commandItems())
 	m.loadHistory(msg.history)
+	if m.firstUserPrompt == "" {
+		m.firstUserPrompt = firstUserPromptFromMessages(msg.history)
+	}
 	resumeCmd := m.consumeResumePicker()
 	if m.pendingNotice != "" {
 		m.addNotice(m.pendingNotice)
@@ -1191,7 +1210,7 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 		m.layout()
 		m.transcript.Add(newBlock(blockNotice, "attached to a running turn"))
 		m.autoTitlePending = m.state.SessionName == ""
-		commands := []tea.Cmd{m.scheduleTick(), m.loadEntries()}
+		commands := []tea.Cmd{m.scheduleTick(), m.loadEntries(), m.syncTerminalTitle()}
 		if m.bridgeReady {
 			commands = append(commands, m.loadProviderAuth())
 		}
@@ -1204,7 +1223,7 @@ func (m *Model) applyHandshake(msg handshakeMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(commands...)
 	}
 
-	commands := []tea.Cmd{m.loadEntries()}
+	commands := []tea.Cmd{m.loadEntries(), m.syncTerminalTitle()}
 	if m.bridgeReady {
 		commands = append(commands, m.loadProviderAuth())
 	}

@@ -132,6 +132,8 @@ func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionFile = ""
 		m.state.SessionID = ""
 	}
+	m.extensionTitle = ""
+	m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 	m.loadHistory(msg.messages)
 	m.composer.SetText(msg.text)
 	m.completion.Refresh(m.composer.Value())
@@ -144,7 +146,7 @@ func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
 	m.addNotice("forked to a new session")
 	m.setToast("forked; the message is back in the editor")
 	m.layout()
-	commands := []tea.Cmd{m.refreshState(), m.refreshStats(), m.loadEntries()}
+	commands := []tea.Cmd{m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle()}
 	if auto := m.autoTitleFromHistory(msg.messages); auto != nil {
 		commands = append(commands, auto)
 	}
@@ -201,6 +203,8 @@ func (m *Model) applyCloneResult(msg cloneResultMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionFile = ""
 		m.state.SessionID = ""
 	}
+	m.extensionTitle = ""
+	m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 	m.loadHistory(msg.messages)
 	m.logEntries = nil
 	m.autoTitlePending = m.state.SessionName == ""
@@ -209,7 +213,7 @@ func (m *Model) applyCloneResult(msg cloneResultMsg) (tea.Model, tea.Cmd) {
 	m.invalidateTitle()
 	m.addNotice("cloned the current branch into a new session")
 	m.setToast("cloned to a new session")
-	commands := []tea.Cmd{m.refreshState(), m.refreshStats(), m.loadEntries()}
+	commands := []tea.Cmd{m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle()}
 	if auto := m.autoTitleFromHistory(msg.messages); auto != nil {
 		commands = append(commands, auto)
 	}

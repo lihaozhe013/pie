@@ -207,6 +207,8 @@ func (m *Model) applyProjectSwitch(msg projectSwitchedMsg) (tea.Model, tea.Cmd) 
 	m.invalidateTitle()
 	m.transcript.Clear()
 	m.state = rpc.State{}
+	m.firstUserPrompt = ""
+	m.extensionTitle = ""
 	m.queue = rpc.QueueUpdateEvent{}
 	m.clearPendingPrompt()
 	m.stats = rpc.SessionStats{}
@@ -232,7 +234,7 @@ func (m *Model) applyProjectSwitch(msg projectSwitchedMsg) (tea.Model, tea.Cmd) 
 	m.reloadConfig()
 	m.pendingNotice = "new session in " + msg.dir
 	m.layout()
-	return m, tea.Batch(m.waitEvent(), m.handshake())
+	return m, tea.Batch(m.waitEvent(), m.handshake(), m.syncTerminalTitle())
 }
 
 // sameDirectory resolves symlinks so /tmp and /private/tmp compare equal.

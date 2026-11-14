@@ -93,6 +93,12 @@ func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 	case *rpc.MessageEndEvent:
 		m.applyMessageEnd(ev.Message)
 		commands := []tea.Cmd{m.waitEvent()}
+		if ev.Message.Role == "user" && m.firstUserPrompt == "" {
+			m.firstUserPrompt = truncateTitlePrompt(ev.Message.Text())
+			if cmd := m.syncTerminalTitle(); cmd != nil {
+				commands = append(commands, cmd)
+			}
+		}
 		if ev.Message.Role == "assistant" && m.statsInFlight == 0 {
 			// The reply carries the usage that defines the next context size.
 			commands = append(commands, m.refreshStats())
@@ -127,7 +133,7 @@ func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 		m.autoTitlePending = false
 		m.autoTitleAttempts = 0
 		m.sessionEpoch.Add(1)
-		return m, m.waitEvent()
+		return m, tea.Batch(m.waitEvent(), m.syncTerminalTitle())
 
 	case *rpc.EntryAppendedEvent:
 		var entry session.LogEntry
@@ -1766,13 +1772,19 @@ func (m *Model) setSessionName(name string) tea.Cmd {
 	m.nameWatchName = name
 	m.nameWatchValid = true
 	m.nameWatchPath = m.state.SessionFile
+	m.state.SessionName = name
+	titleCmd := m.syncTerminalTitle()
 	client := m.client
-	return func() tea.Msg {
+	rpcCmd := func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 		defer cancel()
 		response, err := client.DoOK(ctx, rpc.SetSessionName(name))
 		return responseMsg{action: "name", resp: response, err: err}
 	}
+	if titleCmd != nil {
+		return tea.Batch(titleCmd, rpcCmd)
+	}
+	return rpcCmd
 }
 
 // applyResponse folds a command result into the UI.
@@ -1804,15 +1816,23 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		if response != nil {
 			_ = response.DecodeData(&payload)
 		}
-		var titleCmd tea.Cmd
+		var titleCmds []tea.Cmd
+		if !msg.queued && payload.Disposition != "handled" && m.firstUserPrompt == "" && strings.TrimSpace(m.pendingPromptText) != "" {
+			m.firstUserPrompt = truncateTitlePrompt(m.pendingPromptText)
+			if syncCmd := m.syncTerminalTitle(); syncCmd != nil {
+				titleCmds = append(titleCmds, syncCmd)
+			}
+		}
 		if !msg.queued && payload.Disposition != "handled" && m.state.SessionName == "" && m.state.MessageCount == 0 &&
 			!m.titleRunning && strings.TrimSpace(m.pendingPromptText) != "" {
 			// Name a brand-new session from the first accepted prompt instead
 			// of waiting for a long turn to settle.
-			titleCmd = m.startAutoTitle([]rpc.Message{{
+			if autoCmd := m.startAutoTitle([]rpc.Message{{
 				Role:    "user",
 				Content: rpc.Content{{Type: "text", Text: m.pendingPromptText}},
-			}})
+			}}); autoCmd != nil {
+				titleCmds = append(titleCmds, autoCmd)
+			}
 		}
 		switch payload.Disposition {
 		case "queued":
@@ -1840,7 +1860,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 			// The block itself now carries the echo match.
 			m.pendingPromptText = ""
 		}
-		return m, titleCmd
+		return m, tea.Batch(titleCmds...)
 
 	case "model":
 		if model, err := rpc.DecodeTyped[rpc.ModelInfo](response); err == nil && model.ID != "" {
@@ -1886,6 +1906,8 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionName = ""
 		m.state.SessionFile = ""
 		m.state.SessionID = ""
+		m.firstUserPrompt = ""
+		m.extensionTitle = ""
 		// The entries and the refreshed state race; a new session has no
 		// messages, so the saved preset must not read the old count.
 		m.state.MessageCount = 0
@@ -1895,7 +1917,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.logEntries = nil
 		m.transcript.Add(m.welcomeBlock())
 		m.addNotice("started a new session")
-		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries())
+		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle())
 
 	case "switch_session":
 		m.resetPresetRestore()
@@ -1911,8 +1933,10 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionName = ""
 		m.state.SessionFile = ""
 		m.state.SessionID = ""
+		m.firstUserPrompt = ""
+		m.extensionTitle = ""
 		m.presetBeforePlan = ""
-		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries())
+		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle())
 
 	case "compact":
 		m.setToast("context compacted")
@@ -1929,6 +1953,7 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		if response != nil {
 			m.setToast("session renamed")
 		}
+		return m, m.syncTerminalTitle()
 
 	case "extension-select", "extension-input", "extension-editor":
 		return m, nil
@@ -1996,7 +2021,8 @@ func (m *Model) handleExtensionUI(request *rpc.ExtensionUIRequestEvent) (tea.Mod
 	case "setWidget":
 		m.widget = request.WidgetLines
 	case "setTitle":
-		return m, tea.SetWindowTitle(request.Title)
+		m.extensionTitle = request.Title
+		return m, tea.Batch(m.syncTerminalTitle(), m.waitEvent())
 	case "set_editor_text":
 		if m.ask != nil {
 			// The composer is answering a question, so a prefill lands in the
