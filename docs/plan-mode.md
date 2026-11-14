@@ -68,21 +68,31 @@ outside the plan directory, it is ignored and the deterministic path is used.
 
 ## Tool
 
-Plan mode registers one model tool, `update_plan`:
+The bridge registers one model tool, `update_plan`:
 
 ```text
 parameters:
-  content: string          required, full Markdown, replaces the file
-  baseRevision?: string    optional sha256 of the current file
+  content?: string         full Markdown; required for a new plan and content changes
+  status?: draft|ready|in-progress|done
+  baseRevision?: string    full 64-character sha256; required when the file exists
 ```
 
 - The tool writes only the current session's plan file; it accepts no path argument.
-- It is registered with `defaultActive: false` and is activated by the Plan preset.
+- It is activated in Plan mode and, for status-only updates, while an approved plan is
+  `in-progress`.
 - It executes sequentially and writes atomically.
-- `baseRevision` refuses the write when the file changed after the injected context was built.
-- Every successful write appends a `pie:plan` entry so clients can refresh.
+- `baseRevision` is required for an existing plan and must match the full revision in the
+  injected context. Missing, malformed, truncated, and stale revisions are refused with
+  distinct errors.
+- In Plan mode, `content` replaces the file; `status` can be supplied with content or alone.
+- Outside Plan mode, the approved plan content is read-only; only `status` may change. This is
+  how the agent records `done` after verification without rewriting the plan.
+- Every successful content or status update appends a `pie:plan` entry so clients can refresh.
+- Direct `edit`/`write` calls against the plan path are refused. They would bypass revision
+  checking and leave the session entry stale.
 
-The name is `update_plan`, not `write_plan`. The web UI's `write_*` name predicate would otherwise
+The status-only path and the full-revision guard are implemented by the TUI bridge. The Web UI
+plan tool remains content-only in this iteration. The name is `update_plan`, not `write_plan`. The web UI's `write_*` name predicate would otherwise
 treat the plan file as an ordinary project write and Plan mode's own write guard would block it.
 
 ## Work mode rules
@@ -92,9 +102,9 @@ treat the plan file as an ordinary project write and Plan mode's own write guard
 - `read`, `grep`, `find`, `ls`, and `ask_user` stay available.
 - `update_plan` is the only plan-mode write. It writes outside the project, in the agent directory.
 - Extension and MCP tools keep their own semantics; Plan mode is not a security sandbox.
-- Leaving Plan mode restores the previous preset. The plan file and its entry remain. Normal
-  `edit`/`write` can update the plan during implementation, and the plan context keeps being
-  injected.
+- Leaving Plan mode restores the previous preset. The plan file and its entry remain. In the
+  TUI bridge, plan content is read-only after approval; `update_plan` with `status` is the only
+  plan mutation, and direct `edit`/`write` calls against the plan path are refused.
 
 ## Approval
 
@@ -120,10 +130,12 @@ The plan file is never part of the message history. Three layers keep it availab
 
 1. `before_agent_start` reads the file and adds a small `<pie-plan>` system-prompt section with
    the path, title, status, and revision.
-2. `context` reads the file before every model request and appends a request-local custom message.
-   A plan of up to 12,000 characters is included whole; a larger plan contributes its outline and
-   the path, and the model reads the rest with `read`. The message is not written to the session
-   log, so it cannot be compacted away and is regenerated on the next request.
+2. In the TUI bridge, `context` reads the file before every model request and appends a
+   request-local custom message. The full plan (or the outline for a larger plan) is included when
+   the revision changes, after compaction, and on the first request. Unchanged requests receive a
+   short path/status/revision reminder instead of repeating the document. The message is not
+   written to the session log, so it cannot be compacted away and is regenerated on the next
+   request.
 3. `session_before_compact` and `session_compact` set a flag. The next request says explicitly
    that the conversation was compacted and that the plan file, not the summary, is authoritative.
 
@@ -132,7 +144,8 @@ entries and the deterministic path still points at the file. A missing file is r
 template and announced through the entry.
 
 Plans larger than 256 KiB are refused by `update_plan`; a manually larger file is still readable
-but the injected context is an outline. The UI caps display reads and reports truncation.
+but the injected context is an outline, and status updates are refused because the bridge cannot
+verify the whole file. The UI caps display reads and reports truncation.
 
 ## Presentation
 

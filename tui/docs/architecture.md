@@ -288,13 +288,19 @@ active set keeps the tool for the modes that allow questions. The mode does not
 start or drive a goal: `/goal` and the installed goal package keep that role.
 
 Plan mode is file-backed. The bridge registers `update_plan` for every session
-but leaves it inactive until the plan preset names it. On entering the mode it
-creates `<agentDir>/pie-plans/<session-id>.md`, appends a `pie:plan` pointer,
-and blocks project writes and shell calls. `before_agent_start` adds the plan
-guidelines and a small `pie-plan` prompt section; a `context` hook re-reads the
-file before every model request and injects the plan or its outline. That hook
-is request-local, so compaction cannot remove it, and `session_compact` makes
-the next request say explicitly that the file is authoritative. The file is
+but activates it in Plan mode and, for status-only updates, while an approved
+plan is `in-progress`. On entering the mode it creates
+`<agentDir>/pie-plans/<session-id>.md`, appends a `pie:plan` pointer, and blocks
+project writes and shell calls. `before_agent_start` adds the plan guidelines
+and a small `pie-plan` prompt section; a `context` hook re-reads the file before
+every model request. It injects the full plan (or outline) when the revision
+changes, after compaction, and on the first request; otherwise it sends a short
+reminder. That hook is request-local, so compaction cannot remove it, and
+`session_compact` makes the next request say explicitly that the file is
+authoritative. The tool requires the full 64-character revision from the
+context. Content writes are limited to Plan mode; after approval only the
+status can change, and direct `edit`/`write` calls against the plan path are
+refused so the revision and `pie:plan` entry stay coherent. The file is a
 shared contract with the web UI; see [Plan mode](../../docs/plan-mode.md).
 `/artifact` (alias `/plan`) opens the file as a full-page artifact with pager
 keys and `a`/`r`/`m` actions. Approval sends the internal

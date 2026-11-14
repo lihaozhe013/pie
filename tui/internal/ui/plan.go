@@ -354,7 +354,7 @@ func newestPlanEntryID(entries []session.LogEntry) string {
 
 func planImplementationPrompt(path string) string {
 	return fmt.Sprintf(
-		"The plan at %s is approved. Implement it now. Read the plan file first and follow it; if implementation reveals a needed change, update the plan file before continuing.",
+		"The plan at %s is approved. Implement it now. Read the plan file first and follow it. The approved plan content is read-only; do not edit it directly. After verification, call update_plan with status done. If the plan needs a material change, stop and ask me to revise it in Plan mode.",
 		path,
 	)
 }

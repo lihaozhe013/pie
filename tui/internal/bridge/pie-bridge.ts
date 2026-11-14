@@ -104,6 +104,10 @@ const PLAN_GUIDELINES = [
 // that the plan file, not the compacted transcript, is authoritative.
 let planCompacted = false;
 
+// The revision whose content was last injected. Unchanged plans get a short
+// reminder instead of the full document on every request.
+let lastPlanContextRevision;
+
 // Copied from Pie's autonomous-mode extension (webui/lib/autonomous-mode-extension.ts).
 // Keep the wording in sync with the browser client.
 const AUTONOMOUS_GUIDELINES = [
@@ -245,6 +249,20 @@ function planPathForSession(sessionManager) {
   const entries = sessionManager.getEntries();
   const entry = readPlanEntry(entries);
   return entry?.path ?? planPathForSessionId(sessionManager.getSessionId());
+}
+
+function pathKey(path) {
+  const resolved = resolve(path);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+// The plan file is managed by update_plan. Direct edit/write calls would bypass
+// its revision check and leave the pie:plan pointer stale.
+function isPlanFileEdit(sessionManager, toolName, input) {
+  if (toolName !== "edit" && toolName !== "write") return false;
+  const path = input && typeof input.path === "string" ? input.path : "";
+  if (!path) return false;
+  return pathKey(path) === pathKey(planPathForSession(sessionManager));
 }
 
 function readTextCapped(path, maxBytes) {
@@ -425,24 +443,31 @@ function renderPlanSection(plan) {
     `Path: ${plan.path}`,
     `Title: ${plan.title}`,
     `Status: ${plan.status}`,
-    `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable for an oversized plan"}`,
+    `Revision: ${plan.revision ?? "unavailable for an oversized plan"}`,
     "The plan file is authoritative and survives context compaction.",
   ].join("\n");
 }
 
-function renderPlanContext(plan, compacted) {
+function renderPlanContext(plan, compacted, includeContent) {
   const lines = [
     "[pie-plan-context, not a user request]",
     `Authoritative plan file: ${plan.path}`,
     `Title: ${plan.title}`,
     `Status: ${plan.status}`,
-    `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable"}`,
+    `Revision: ${plan.revision ?? "unavailable"}`,
     "The plan file is outside the conversation and survives context compaction.",
   ];
   if (compacted) {
     lines.push(
       "The conversation was compacted. Do not rely on the summary for plan details; the plan file below is authoritative.",
     );
+  }
+  if (!includeContent) {
+    lines.push(
+      "",
+      "The plan content is unchanged since the previous request. Read the plan file if you need details.",
+    );
+    return lines.join("\n");
   }
   if (!plan.truncated && plan.content.length <= PLAN_CONTEXT_MAX_CHARS) {
     lines.push("", plan.content);
@@ -1452,11 +1477,12 @@ export default function (pi) {
     name: PLAN_TOOL_NAME,
     label: "Update plan",
     description:
-      "Write the session's durable Markdown plan file. The full content replaces the current file. The plan file lives outside the conversation and survives context compaction.",
-    promptSnippet: "Write the session's durable plan file",
+      "Write or update the session's durable Markdown plan file. In Plan mode, content replaces the file. After approval, only the status can change.",
+    promptSnippet: "Write or update the session's durable plan file",
     promptGuidelines: [
       "Write a self-contained plan: goal, constraints, ordered steps, files, verification, and risks. Use Status: draft while exploring, ready when complete, in-progress after approval, and done after verification.",
-      "Pass baseRevision from the injected plan context when replacing an existing plan; the tool refuses a write if the file changed first.",
+      "Pass the full 64-character baseRevision from the injected plan context whenever a plan file exists; the tool refuses stale writes.",
+      "After approval, use the status parameter only. Do not rewrite the approved plan content outside Plan mode.",
     ],
     exposure: "direct",
     defaultActive: false,
@@ -1469,45 +1495,106 @@ export default function (pi) {
       openWorldHint: false,
     },
     parameters: Type.Object({
-      content: Type.String({
-        description: "The full Markdown plan. This replaces the current plan file.",
-      }),
+      content: Type.Optional(
+        Type.String({
+          description:
+            "The full Markdown plan. Required for a new plan and for content changes in Plan mode.",
+        }),
+      ),
+      status: Type.Optional(
+        Type.Union([
+          Type.Literal("draft"),
+          Type.Literal("ready"),
+          Type.Literal("in-progress"),
+          Type.Literal("done"),
+        ]),
+      ),
       baseRevision: Type.Optional(
         Type.String({
           description:
-            "The revision shown in the injected plan context. If it no longer matches, the write is refused.",
+            "The full 64-character revision shown in the injected plan context. Required whenever the plan file exists.",
         }),
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const content = String(params?.content ?? "");
-      if (!content.trim()) throw new Error("update_plan needs non-empty content");
-      if (Buffer.byteLength(content, "utf8") > PLAN_MAX_BYTES) {
-        throw new Error(`update_plan content exceeds ${PLAN_MAX_BYTES} bytes`);
-      }
-      const path = planPathForSessionId(ctx.sessionManager.getSessionId());
+      const entries = ctx.sessionManager.getEntries();
+      const mode = readWorkMode(entries);
+      const path = planPathForSession(ctx.sessionManager);
       const existing = existsSync(path) ? readPlanSnapshot(path) : undefined;
-      if (params?.baseRevision) {
-        if (!existing || existing.revision !== params.baseRevision) {
+
+      if (existing && (existing.truncated || !existing.revision)) {
+        throw new Error("plan file is too large to update safely");
+      }
+
+      const content = typeof params?.content === "string" ? params.content : "";
+      const hasContent = content.trim().length > 0;
+      const status = typeof params?.status === "string" ? params.status.trim().toLowerCase() : "";
+      if (status && !PLAN_STATUSES.has(status)) throw new Error("invalid plan status");
+      if (!hasContent && !status) throw new Error("update_plan needs content or status");
+      if (!hasContent && !existing) throw new Error("update_plan needs content for a new plan");
+
+      if (existing) {
+        const baseRevision = String(params?.baseRevision ?? "").trim().toLowerCase();
+        if (!baseRevision) {
+          throw new Error("update_plan needs the full baseRevision shown in the plan context");
+        }
+        if (!/^[a-f0-9]{64}$/.test(baseRevision)) {
           throw new Error(
-            "The plan file changed on disk. Read it again and retry with the current revision.",
+            "baseRevision must be the full 64-character revision shown in the plan context",
           );
         }
+        if (existing.revision !== baseRevision) {
+          throw new Error(
+            "The plan changed since it was read. Read the plan file again and retry with the current revision.",
+          );
+        }
+      } else if (params?.baseRevision) {
+        throw new Error("The plan file no longer exists; read it again before writing");
       }
-      writePlanContent(path, content);
+
+      if (mode !== "plan" && hasContent) {
+        throw new Error(
+          "The approved plan is read-only outside Plan mode; use the status parameter only",
+        );
+      }
+      if (hasContent && Buffer.byteLength(content, "utf8") > PLAN_MAX_BYTES) {
+        throw new Error(`update_plan content exceeds ${PLAN_MAX_BYTES} bytes`);
+      }
+
+      let nextContent;
+      if (hasContent) {
+        nextContent = status ? setPlanStatus(content, status) : content;
+      } else {
+        nextContent = setPlanStatus(existing.content, status);
+      }
+      if (Buffer.byteLength(nextContent, "utf8") > PLAN_MAX_BYTES) {
+        throw new Error(`update_plan content exceeds ${PLAN_MAX_BYTES} bytes`);
+      }
+
+      writePlanContent(path, nextContent);
       const plan = readPlanSnapshot(path);
       pi.appendEntry(PLAN_ENTRY_TYPE, planEntryData(plan));
-      const text = [
-        `Plan written to ${plan.path}.`,
-        `Title: ${plan.title}`,
-        `Status: ${plan.status}`,
-        `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable"}`,
-        `Bytes: ${plan.bytes}`,
-        "This file is authoritative and survives context compaction. Pass baseRevision when replacing it again.",
-        "",
-        "Outline:",
-        plan.outline,
-      ].join("\n");
+      if (!hasContent) lastPlanContextRevision = plan.revision;
+      const text = hasContent
+        ? [
+            `Plan written to ${plan.path}.`,
+            `Title: ${plan.title}`,
+            `Status: ${plan.status}`,
+            `Revision: ${plan.revision ?? "unavailable"}`,
+            `Bytes: ${plan.bytes}`,
+            "This file is authoritative and survives context compaction. Pass the full baseRevision when replacing it again.",
+            "",
+            "Outline:",
+            plan.outline,
+          ].join("\n")
+        : [
+            `Plan status updated to ${plan.status}.`,
+            `Path: ${plan.path}`,
+            `Title: ${plan.title}`,
+            `Revision: ${plan.revision ?? "unavailable"}`,
+            `Bytes: ${plan.bytes}`,
+            "The plan content was not changed.",
+          ].join("\n");
       return {
         content: [{ type: "text", text }],
         details: {
@@ -1518,6 +1605,7 @@ export default function (pi) {
           bytes: plan.bytes,
           outline: plan.outline,
           truncated: plan.truncated,
+          updated: hasContent ? "content" : "status",
         },
       };
     },
@@ -1526,6 +1614,7 @@ export default function (pi) {
   // Restore a pinned tool set when a session is resumed, the way pie's server
   // rebuilds the session from its own entries.
   pi.on("session_start", async (_event, ctx) => {
+    lastPlanContextRevision = undefined;
     const entries = ctx.sessionManager.getEntries();
     const selection = readToolSelection(entries);
     if (selection) applyToolSelection(pi, selection);
@@ -1555,9 +1644,10 @@ export default function (pi) {
 
     if (mode === "plan") {
       options.promptGuidelines.push(...PLAN_GUIDELINES);
-      if (!options.selectedTools.includes(PLAN_TOOL_NAME)) {
-        options.selectedTools.push(PLAN_TOOL_NAME);
-      }
+    } else if (plan && plan.status === "in-progress") {
+      options.promptGuidelines.push(
+        "The plan is approved and its content is read-only. Do not edit the plan file; after verification call update_plan with status \"done\".",
+      );
     }
     if (mode === "autonomous") {
       options.promptGuidelines.push(...AUTONOMOUS_GUIDELINES);
@@ -1569,6 +1659,11 @@ export default function (pi) {
       options.selectedTools = options.selectedTools.filter((name) => name !== ASK_USER_TOOL_NAME);
     }
     if (plan) {
+      if (mode === "plan" || plan.status === "in-progress") {
+        if (!options.selectedTools.includes(PLAN_TOOL_NAME)) {
+          options.selectedTools.push(PLAN_TOOL_NAME);
+        }
+      }
       options.sections["pie-plan"] = renderPlanSection(plan);
     }
   });
@@ -1577,13 +1672,19 @@ export default function (pi) {
   // remove it; every request after a compaction reads the file again.
   pi.on("context", async (event, ctx) => {
     const plan = readPlanForSession(ctx.sessionManager);
-    if (!plan) return;
+    if (!plan) {
+      lastPlanContextRevision = undefined;
+      return;
+    }
     const compacted = planCompacted;
     planCompacted = false;
+    const changed = plan.revision !== lastPlanContextRevision;
+    const includeContent = compacted || changed || !lastPlanContextRevision;
+    lastPlanContextRevision = plan.revision;
     event.messages.push({
       role: "custom",
       customType: "pie-plan-context",
-      content: [{ type: "text", text: renderPlanContext(plan, compacted) }],
+      content: [{ type: "text", text: renderPlanContext(plan, compacted, includeContent) }],
       display: false,
       timestamp: Date.now(),
     });
@@ -1607,14 +1708,22 @@ export default function (pi) {
           '" is blocked. Decide from the workspace and state your assumption in the result.',
       };
     }
-    if (mode !== "plan" || !PLAN_BLOCKED.has(event.toolName)) return;
-    return {
-      block: true,
-      reason:
-        'Plan mode is read-only for the project, so "' +
-        event.toolName +
-        '" is blocked. Read the workspace and ask the user with ask_user; record the plan with update_plan. They leave Plan mode when they want changes made.',
-    };
+    if (mode === "plan" && PLAN_BLOCKED.has(event.toolName)) {
+      return {
+        block: true,
+        reason:
+          'Plan mode is read-only for the project, so "' +
+          event.toolName +
+          '" is blocked. Read the workspace and ask the user with ask_user; record the plan with update_plan. They leave Plan mode when they want changes made.',
+      };
+    }
+    if (isPlanFileEdit(ctx.sessionManager, event.toolName, event.input)) {
+      return {
+        block: true,
+        reason:
+          "The plan file is managed by update_plan. Outside Plan mode use the status parameter only; re-enter Plan mode to change its content.",
+      };
+    }
   });
 
   pi.registerCommand("pie-tools", {
@@ -1675,7 +1784,11 @@ export default function (pi) {
         ctx.ui.notify("pie-plan-approve: no plan file", "error");
         return;
       }
-      if (!plan.revision || plan.revision !== revision) {
+      if (plan.truncated || !plan.revision) {
+        ctx.ui.notify("pie-plan-approve: the plan file is too large to approve", "error");
+        return;
+      }
+      if (plan.revision !== revision) {
         ctx.ui.notify("pie-plan-approve: the plan file changed; read it again", "error");
         return;
       }

@@ -91,7 +91,9 @@ file without a restart; otherwise the change applies to the next pi run.
   autonomous carry a work mode: plan keeps the project read-only, activates
   `update_plan`, and writes a durable plan file under the agent directory;
   autonomous omits `ask_user` from each run and adds guidance to decide and
-  keep working. `/artifact` opens the plan artifact (`/plan` is an alias):
+  keep working. After approval, `update_plan` stays available for a
+  status-only `done` update; plan content is read-only until Plan mode is
+  re-entered. `/artifact` opens the plan artifact (`/plan` is an alias):
   `a` approves and starts implementation, `r` rejects and requests changes,
   `m` switches the model before approval, `y` copies, and `esc` closes.
 - Code mode: automatic or always writes `+codemode` into `defaultTools` with the
