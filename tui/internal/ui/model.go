@@ -142,6 +142,7 @@ type (
 	historyMsg struct {
 		messages []rpc.Message
 		state    *rpc.State
+		stats    *rpc.SessionStats
 		err      error
 	}
 
@@ -853,6 +854,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// messages failed.
 		m.resetPresetRestore()
 		m.sessionEpoch.Add(1)
+		m.invalidateStats()
+		m.clearPendingPrompt()
+		m.queue = rpc.QueueUpdateEvent{}
 		m.autoTitlePending = false
 		m.autoTitleAttempts = 0
 		m.resetSessionNameWatch()
@@ -864,16 +868,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.state != nil {
 			m.state = *msg.state
 		}
+		if msg.stats != nil {
+			m.stats = *msg.stats
+		}
 		m.loadHistory(msg.messages)
+		var commands []tea.Cmd
+		commands = append(commands, m.loadEntries())
+		if msg.stats == nil {
+			commands = append(commands, m.refreshStats())
+		}
 		if msg.state != nil {
 			// Name the session from the history now, even if the attached turn
 			// is still streaming; a failure retries when that turn settles.
 			m.autoTitlePending = m.state.SessionName == ""
 			if cmd := m.autoTitleFromHistory(msg.messages); cmd != nil {
-				return m, cmd
+				commands = append(commands, cmd)
 			}
 		}
-		return m, nil
+		return m, tea.Batch(commands...)
 
 	case entriesMsg:
 		if msg.err != nil {
@@ -1459,7 +1471,7 @@ func (m *Model) renderStatus() string {
 	if m.stats.Tokens.Total > 0 || m.stats.ContextUsage != nil {
 		// Show context used over the window limit ("200k / 256k"); fall
 		// back to the session total when the model reports no usage.
-		if usage := m.contextUsage(); usage != nil && usage.ContextWindow > 0 {
+		if usage := m.contextUsage(); usage != nil && usage.ContextWindow > 0 && (usage.Tokens > 0 || m.stats.Tokens.Total == 0) {
 			right = fmt.Sprintf("%s / %s", formatTokens(usage.Tokens), formatTokens(usage.ContextWindow))
 		} else {
 			right = formatTokens(m.stats.Tokens.Total)

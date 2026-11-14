@@ -1442,6 +1442,11 @@ func (m *Model) switchSession(path string) tea.Cmd {
 				msg.state = &state
 			}
 		}
+		if statsResponse, statsErr := client.DoOK(ctx, rpc.GetSessionStats()); statsErr == nil {
+			if stats, decodeErr := rpc.DecodeTyped[rpc.SessionStats](statsResponse); decodeErr == nil {
+				msg.stats = &stats
+			}
+		}
 		return msg
 	}
 }
