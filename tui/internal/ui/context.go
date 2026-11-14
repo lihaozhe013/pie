@@ -65,8 +65,21 @@ func (m *Model) showContextPanel() {
 				}
 				return snapshot.WorkMode
 			}},
+			{ID: "context-plan", Label: "Plan file", Kind: settingsInfo, Current: func() string {
+				if snapshot.Plan == nil || snapshot.Plan.Path == "" {
+					return "none"
+				}
+				status := snapshot.Plan.Status
+				if status == "" {
+					status = "unknown"
+				}
+				return status + " · " + snapshot.Plan.Path
+			}},
 			{ID: "context-view", Label: "View system prompt", Kind: settingsAction, Help: "Opens a read-only page; y copies the whole prompt.", Run: func(m *Model, s *settingsState) tea.Cmd {
 				return m.viewSystemPrompt("System prompt", snapshot.SystemPrompt)
+			}},
+			{ID: "context-plan-view", Label: "View plan file", Kind: settingsAction, Help: "Opens the durable Plan mode file.", Run: func(m *Model, s *settingsState) tea.Cmd {
+				return m.openPlan()
 			}},
 		}
 		// The external pager is an extra, not a requirement: the page above always

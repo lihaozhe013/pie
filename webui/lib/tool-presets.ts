@@ -51,9 +51,9 @@ export type ConcreteToolPreset = (typeof CONCRETE_TOOL_PRESET_VALUES)[number];
 export const CONFIGURED_TOOL_PRESET = 'configured';
 
 /**
- * "plan" pins the read-only tools like "read-only" does, and additionally stores a work
- * mode: the agent discusses and asks questions instead of implementing. The two cannot be
- * told apart by tool names, so the mode is persisted separately (`lib/work-mode.ts`).
+ * "plan" pins the read-only project tools plus `update_plan`, and additionally stores a work
+ * mode: the agent discusses and asks questions instead of implementing. The mode is persisted
+ * separately (`lib/work-mode.ts`), so it survives a tool list that also matches "read-only".
  */
 export const PLAN_TOOL_PRESET = 'plan';
 /**
@@ -95,6 +95,7 @@ export type SessionExtensionToolsPolicy = 'all' | 'selected';
  */
 export const PIE_EXTENSION_TOOL_NAMES = [
   'ask_user',
+  'update_plan',
   'task_manager',
   'codemode',
   'tool_search',
@@ -107,6 +108,8 @@ export const PIE_EXTENSION_TOOL_NAMES = [
 
 export const PRESET_NONE: string[] = [];
 export const PRESET_READ_ONLY: string[] = ['read', 'grep', 'find', 'ls'];
+/** Plan keeps the project read-only while allowing the durable plan file to be written. */
+export const PRESET_PLAN: string[] = [...PRESET_READ_ONLY, 'update_plan'];
 export const PRESET_DEFAULT: string[] = ['read', 'bash', 'edit', 'write'];
 export const PRESET_FULL: string[] = ['bash', 'read', 'edit', 'write', 'grep', 'find', 'ls'];
 
@@ -166,7 +169,7 @@ export function getPresetFromToolNames(toolNames: readonly string[]): ConcreteTo
 /** Undefined means "no explicit selection": let pi resolve settings.json defaultTools. */
 export function getToolNamesForPreset(preset: ToolPreset): string[] | undefined {
   if (preset === CONFIGURED_TOOL_PRESET) return undefined;
-  if (preset === PLAN_TOOL_PRESET) return [...PRESET_READ_ONLY];
+  if (preset === PLAN_TOOL_PRESET) return [...PRESET_PLAN];
   if (preset === AUTONOMOUS_TOOL_PRESET || preset === ORCHESTRATOR_TOOL_PRESET)
     return [...PRESET_FULL];
   if (preset === 'none') return [...PRESET_NONE];

@@ -287,6 +287,17 @@ reloading pi, and a nested or stale call is refused with a reason. The live
 active set keeps the tool for the modes that allow questions. The mode does not
 start or drive a goal: `/goal` and the installed goal package keep that role.
 
+Plan mode is file-backed. The bridge registers `update_plan` for every session
+but leaves it inactive until the plan preset names it. On entering the mode it
+creates `<agentDir>/pie-plans/<session-id>.md`, appends a `pie:plan` pointer,
+and blocks project writes and shell calls. `before_agent_start` adds the plan
+guidelines and a small `pie-plan` prompt section; a `context` hook re-reads the
+file before every model request and injects the plan or its outline. That hook
+is request-local, so compaction cannot remove it, and `session_compact` makes
+the next request say explicitly that the file is authoritative. The file is
+shared contract with the web UI; see [Plan mode](../../docs/plan-mode.md). `/plan`
+opens the file in the client's read-only viewer.
+
 Provider sign-in is bridged the same way. `pi --mode rpc` has no provider list,
 login, or logout command, and `get_available_models` only reports providers
 that already have a credential, so the extension registers `/pie-providers`,
@@ -349,9 +360,10 @@ left alone rather than blocking the delete the user asked for. The picker drops
 the row in place, so deleting several sessions in a row needs no reopen.
 
 `/context` is fed by `/pie-publish`, not by the UI guessing: the bridge reads
-`getActiveTools`, `getAllTools`, `getSystemPrompt`, and the session's work mode,
-and marks each tool active at publish time; autonomous mode hides `ask_user`
-there too, because the run does not declare it. The panel lists the tools,
+`getActiveTools`, `getAllTools`, `getSystemPrompt`, the session's work mode, and
+the plan pointer, and marks each tool active at publish time; autonomous mode
+hides `ask_user` there too, because the run does not declare it. The panel lists
+the tools,
 shows the system prompt in a read-only page of the client's own, and refreshes
 on demand. The page is drawn in the client because the prompt is the one thing
 here that has to be readable on a machine with no pager installed; `PIE_PAGER`,

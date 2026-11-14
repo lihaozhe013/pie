@@ -53,8 +53,8 @@ var BuiltinPresets = []BuiltinPreset{
 	{
 		ID:          "plan",
 		Name:        "plan",
-		Description: "Read-only tools; the agent plans and asks instead of implementing",
-		Tools:       []string{"read", "grep", "find", "ls"},
+		Description: "Project read-only; the agent writes a durable plan file and asks instead of implementing",
+		Tools:       []string{"read", "grep", "find", "ls", "update_plan"},
 		WorkMode:    "plan",
 	},
 	{

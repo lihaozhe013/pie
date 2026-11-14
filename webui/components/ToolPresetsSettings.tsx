@@ -5,6 +5,7 @@ import {
   PIE_EXTENSION_TOOL_NAMES,
   PRESET_DEFAULT,
   PRESET_FULL,
+  PRESET_PLAN,
   PRESET_READ_ONLY,
   isSelectableToolName,
   sortToolNames,
@@ -80,7 +81,7 @@ const BUILT_IN_PRESETS: {
   tools: readonly string[] | null;
 }[] = [
   { id: 'configured', name: 'configured', descriptionKey: 'chat.configuredTools', tools: null },
-  { id: 'plan', name: 'plan', descriptionKey: 'chat.planModeTools', tools: PRESET_READ_ONLY },
+  { id: 'plan', name: 'plan', descriptionKey: 'chat.planModeTools', tools: PRESET_PLAN },
   {
     id: 'autonomous',
     name: 'autonomous',

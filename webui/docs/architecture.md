@@ -89,9 +89,9 @@ model is selected again. Pi CLI sharing the agent directory does not apply the c
 Pie hosts ordinary Pi SDK sessions. It does not spawn or control subagents, maintain agent profiles,
 or create Git worktrees. There are no subagent HTTP routes or specialized transcript viewers.
 Installed extensions follow Pi's normal loading semantics and render through generic tool and
-extension UI paths. The one tool surface Pie registers itself is the Orchestrator preset's
-`task_manager` tool in [Orchestrator](orchestrator.md); it acts on the session's own project queue,
-not on agents.
+extension UI paths. Pie registers two tools itself: the Orchestrator preset's `task_manager` in
+[Orchestrator](orchestrator.md), which acts on the session's own project queue, and Plan mode's
+`update_plan`, which writes the session's durable plan file. Neither defines an agent runtime.
 
 One scheduled surface exists: the per-project task queues in [Tasks](tasks.md). A project never
 runs two queued tasks at once, but chat sessions are first-class work on the same board: they can
@@ -199,7 +199,8 @@ first-token timing. The end-to-end speed continues to use Pi's recorded response
 `lib/tool-presets.ts` selects the coding tools a session may call. Plan, Autonomous, and
 Orchestrator also carry a work mode, because their tool lists alone would lose their behavior; the
 mode is stored in the session log (`lib/work-mode.ts`, `pie:work-mode`) and travels next to the tool
-list in `GET /api/sessions/[id]` and `get_tools`. Plan pins read-only tools and asks before acting.
+list in `GET /api/sessions/[id]` and `get_tools`. Plan pins read-only project tools, adds
+`update_plan`, and asks before acting.
 Autonomous pins the full tool set, omits `ask_user`, and adds guidance to decide and keep working;
 the task runner uses it with a goal so an idle foreground turn is not mistaken for completion.
 Orchestrator pins the full tool set and adds one project-scoped `task_manager` tool. A custom preset
@@ -229,7 +230,21 @@ opt-in: its extension is loaded when Orchestrator is active or a custom preset n
 - Write, shell, and patch tools are refused in `tool_call`. The tool selection alone is not enough:
   a carried extension tool is outside the pinned list. MCP writes stay governed by the existing
   `readOnlyHint` policy, and other installed extension tools keep their own semantics.
-- Leaving the mode needs no rebuild; the next message simply runs without the guidelines.
+- The mode registers `update_plan`, a model tool that writes the session's durable
+  `<agentDir>/pie-plans/<session-id>.md` file. The file is the only plan-mode write; it lives outside
+  the project and outside the session log, so compaction cannot remove it.
+- `before_agent_start` adds a small `pie-plan` system section, and a request-local `context` hook
+  re-reads the file before every model request and injects the plan or its outline. `session_compact`
+  makes the next request state that the file, not the summary, is authoritative. The entry's metadata
+  is only a pointer; readers use the file.
+- Leaving the mode needs no rebuild; the next message simply runs without the guidelines. The plan
+  file and entry remain, and normal edits can update the plan during implementation.
+- `GET /api/sessions/[id]` reports plan facts and `GET /api/sessions/[id]/plan` returns the content.
+  Both validate the path against `<agentDir>/pie-plans` before reading it. The composer's `...` menu
+  toggles the mode and opens the read-only plan dialog.
+
+The shared contract, including the plan format, entry shape, tool parameters, and compaction rules,
+is in [Plan mode](../../docs/plan-mode.md).
 
 `lib/ask-user-extension.ts` registers `ask_user` in every normal session except Autonomous; a
 Chat-only session loads no extensions. The model asks one focused question with optional options.

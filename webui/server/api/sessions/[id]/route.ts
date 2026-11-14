@@ -1,4 +1,5 @@
 import { json } from '@/server/http';
+import { getAgentDir } from '@earendil-works/pi-coding-agent';
 import { existsSync, statSync } from 'fs';
 import {
   attachSessionProjectInfo,
@@ -21,6 +22,7 @@ import {
   readSessionToolSelection
 } from '@/lib/session-tool-selection';
 import { readWorkMode } from '@/lib/work-mode';
+import { PLAN_FACTS_MAX_BYTES, planFacts, readPlanForSession } from '@/lib/plan-file';
 import { readGoalFacts } from '@/lib/goal-driver';
 import { deleteSessions } from '@/lib/session-delete';
 import {
@@ -124,6 +126,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const extensionTools = readSessionExtensionToolsPolicy(entries as never);
     // Plan and Read-only pin the same tools, so the stored mode is reported beside them.
     const workMode = readWorkMode(entries as never);
+    // The plan file is authoritative; this read only decides whether the UI has
+    // a plan to show and what its title/status currently are.
+    const plan = readPlanForSession(
+      getAgentDir(),
+      sm.getSessionId(),
+      entries as never,
+      PLAN_FACTS_MAX_BYTES
+    );
+    const planInfo = plan ? planFacts(plan) : undefined;
     // The goal is branch state like the work mode, and an installed goal package
     // writes it: read the package's own record from the same entries.
     const goal = readGoalFacts(entries as never);
@@ -181,6 +192,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
           totalActiveMs,
           ...(toolNames !== undefined ? { toolNames, extensionTools } : {}),
           ...(workMode !== undefined ? { mode: workMode } : {}),
+          ...(planInfo ? { plan: planInfo } : {}),
           ...(goal ? { goal } : {}),
           ...(wrapperRebuilt ? { wrapperRebuilt: true } : {})
         })
@@ -198,6 +210,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         totalActiveMs,
         ...(toolNames !== undefined ? { toolNames, extensionTools } : {}),
         ...(workMode !== undefined ? { mode: workMode } : {}),
+        ...(planInfo ? { plan: planInfo } : {}),
         ...(goal ? { goal } : {}),
         ...(wrapperRebuilt ? { wrapperRebuilt: true } : {})
       })

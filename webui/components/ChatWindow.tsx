@@ -71,6 +71,7 @@ import {
 import { MessageView } from './MessageView';
 import { MarkdownBody } from './MarkdownBody';
 import { ChatInput, type ChatInputHandle } from './ChatInput';
+import { PlanDialog } from './PlanDialog';
 import { ChatMinimap, useMessageRefs } from './ChatMinimap';
 import { AnsiText } from './AnsiText';
 import { useI18n } from '@/hooks/useI18n';
@@ -439,6 +440,8 @@ export function ChatWindow({
     goal,
     goalAvailable,
     goalAction,
+    sessionPlan,
+    togglePlanMode,
     respondToExtensionUi,
     sendExtensionCustomInput,
     setNoticePaused,
@@ -516,6 +519,7 @@ export function ChatWindow({
     if (!agentRunning || !holdAudio) return;
     return holdAudio();
   }, [agentRunning, holdAudio]);
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [quotedSelection, setQuotedSelection] = useState<{
     text: string;
     top: number;
@@ -1391,6 +1395,10 @@ export function ChatWindow({
       onAttachFiles={onAttachFiles}
       goal={goal}
       onGoalCommand={goalAvailable && toolPreset !== 'none' ? goalAction : undefined}
+      planMode={toolPreset === 'plan'}
+      plan={sessionPlan}
+      onPlanModeToggle={session || isNew ? togglePlanMode : undefined}
+      onViewPlan={sessionPlan?.exists ? () => setPlanDialogOpen(true) : undefined}
       contextUsage={contextUsage}
     />
   );
@@ -2223,6 +2231,12 @@ export function ChatWindow({
         </div>
         {isEmptyNew && <div className="min-h-0 flex-1" />}
       </div>
+      {planDialogOpen && sessionIdRef.current && (
+        <PlanDialog
+          sessionId={sessionIdRef.current}
+          onClose={() => setPlanDialogOpen(false)}
+        />
+      )}
     </ToolActivityProvider>
   );
 }

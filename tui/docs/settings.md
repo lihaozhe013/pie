@@ -88,8 +88,10 @@ file without a restart; otherwise the change applies to the next pi run.
   plus custom entries from `pie-tool-presets.json`. The last applied preset is
   stored in `pie-settings.json` (`toolPreset`) and reapplied to a new session;
   a resumed session keeps the selection recorded in its own log. Plan and
-  autonomous carry a work mode: plan blocks writes and asks; autonomous omits
-  `ask_user` from each run and adds guidance to decide and keep working.
+  autonomous carry a work mode: plan keeps the project read-only, activates
+  `update_plan`, and writes a durable plan file under the agent directory;
+  autonomous omits `ask_user` from each run and adds guidance to decide and
+  keep working. `/plan` opens the plan file in the read-only viewer.
 - Code mode: automatic or always writes `+codemode` into `defaultTools` with the
   smallest edit; code-mode tools choose `on` or `only`; the inline result budget
   edits `codemode.inlineBudget`.

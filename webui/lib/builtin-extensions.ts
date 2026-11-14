@@ -453,7 +453,7 @@ export async function createPieBuiltinExtensions(
   return {
     extensions: [
       ...(options.askUser === false ? [] : [createAskUserExtension()]),
-      createPlanModeExtension(),
+      createPlanModeExtension({ agentDir: options.agentDir }),
       createAutonomousModeExtension(),
       createWriteDiffExtension(),
       builtin('codemode', sandbox.available ? createCodemodeExtension() : unavailableExtension),

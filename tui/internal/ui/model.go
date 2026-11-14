@@ -377,6 +377,8 @@ type Model struct {
 	selection      session.ToolSelection
 	hasSelection   bool
 	currentMode    string
+	plan           session.Plan
+	hasPlan        bool
 	// presetBeforePlan is the preset Shift+Tab restores when it leaves plan
 	// mode. It is cleared whenever a non-plan preset is applied.
 	presetBeforePlan string
@@ -903,6 +905,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(commands...)
 
+	case planMsg:
+		return m.applyPlanMsg(msg)
+
 	case entriesMsg:
 		if msg.err != nil {
 			// Entries are best effort: the session still works without them.
@@ -912,6 +917,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.entriesLoaded = true
 		m.selection, m.hasSelection = session.ReadToolSelection(m.logEntries)
 		m.currentMode = session.ReadWorkMode(m.logEntries)
+		m.plan, m.hasPlan = session.ReadPlan(m.logEntries)
 		m.goal, m.hasGoal = session.ReadGoal(m.logEntries)
 		if m.overlay != nil && m.overlay.action == "goal" {
 			m.openGoalPanel()
@@ -1570,7 +1576,11 @@ func (m *Model) renderEditor() string {
 	if !m.disconnected && !m.busy {
 		switch m.currentMode {
 		case "plan":
-			hint = "plan mode · writes blocked · " + hint
+			planHint := "no plan yet"
+			if m.hasPlan {
+				planHint = "plan file"
+			}
+			hint = "plan mode · " + planHint + " · writes blocked · " + hint
 		case "autonomous":
 			hint = "autonomous mode · no questions · " + hint
 		}

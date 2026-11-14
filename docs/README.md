@@ -53,11 +53,12 @@ The clients integrate through Pi, not through each other:
 
 - The agent directory is `PI_CODING_AGENT_DIR` when set, otherwise `~/.pi/agent`.
 - Sessions, `settings.json`, `models.json`, `auth.json`, `mcp.json`, global `AGENTS.md`, skills,
-  plugins, and the `pie-*` companion files are read and written there.
+  plugins, the `pie-*` companion files, and `pie-plans/` are read and written there.
 - A session started in one client can be resumed in the other because both use Pi's session format
   and the same `pie:*` session entries where applicable.
 - The TUI's bridge extension adds the same hot tool switching, Plan mode, and reload entries the web
-  UI uses. It is loaded into Pi; it is not shared code.
+  UI uses. Plan mode also writes a durable `pie-plans/<session-id>.md` file in the agent directory;
+  see [Plan mode](plan-mode.md). It is loaded into Pi; it is not shared code.
 
 Treat those files as a public runtime contract. A change to one client's interpretation of a shared
 file needs a matching check in the other client when the behavior overlaps, but not a shared code
@@ -104,6 +105,7 @@ names and local equivalents, is in [CI and releases](ci.md).
 | [Repository README](../README.md)               | Overview, quick start, layout, and license                  |
 | [Repository guide](README.md)                   | This document: boundaries, shared state, and conventions    |
 | [CI and releases](ci.md)                        | Workflow jobs, artifacts, checksums, and local builds       |
+| [Plan mode](plan-mode.md)                       | The shared plan file, tool, session entry, and injection     |
 | [Web UI docs](../webui/docs/README.md)          | Product direction, architecture, runtime, and desktop shell |
 | [TUI architecture](../tui/docs/architecture.md) | Process boundary, protocol rules, and rendering             |
 | [TUI settings](../tui/docs/settings.md)         | Row-by-row settings reference                               |

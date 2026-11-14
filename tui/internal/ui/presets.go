@@ -22,6 +22,7 @@ import (
 // only when the bridge cannot publish the live inventory.
 var fallbackExtensionTools = []string{
 	"ask_user",
+	"update_plan",
 	"codemode",
 	"tool_search",
 	"get_goal",
@@ -41,6 +42,13 @@ type toolSnapshot struct {
 		Tools          []string `json:"tools"`
 		ExtensionTools string   `json:"extensionTools"`
 	} `json:"toolSelection"`
+	Plan *struct {
+		Path     string `json:"path"`
+		Title    string `json:"title"`
+		Status   string `json:"status"`
+		Revision string `json:"revision"`
+		Bytes    int64  `json:"bytes"`
+	} `json:"plan"`
 }
 
 type snapshotTool struct {

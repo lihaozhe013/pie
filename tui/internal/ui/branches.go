@@ -235,6 +235,8 @@ func (m *Model) applyForkResult(msg forkResultMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionID = ""
 	}
 	m.extensionTitle = ""
+	m.plan = session.Plan{}
+	m.hasPlan = false
 	m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 	m.loadHistory(msg.messages)
 	if msg.reverted {
@@ -318,6 +320,8 @@ func (m *Model) applyCloneResult(msg cloneResultMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionID = ""
 	}
 	m.extensionTitle = ""
+	m.plan = session.Plan{}
+	m.hasPlan = false
 	m.firstUserPrompt = firstUserPromptFromMessages(msg.messages)
 	m.loadHistory(msg.messages)
 	m.logEntries = nil

@@ -10,6 +10,7 @@ import (
 const (
 	ToolSelectionEntryType = "pie:tool-selection"
 	WorkModeEntryType      = "pie:work-mode"
+	PlanEntryType          = "pie:plan"
 )
 
 // LogEntry is one session log entry as `get_entries` returns it. Only the
@@ -94,4 +95,34 @@ func ReadWorkMode(entries []LogEntry) string {
 		}
 	}
 	return ""
+}
+
+// Plan is the newest valid plan-file pointer a session carries. The file is
+// authoritative; this entry only lets the client find it.
+type Plan struct {
+	Path      string
+	UpdatedAt string
+	Bytes     int64
+}
+
+// ReadPlan returns the newest valid pie:plan pointer, or false when the
+// session has no plan file yet.
+func ReadPlan(entries []LogEntry) (Plan, bool) {
+	for i := len(entries) - 1; i >= 0; i-- {
+		entry := entries[i]
+		if entry.Type != "custom" || entry.CustomType != PlanEntryType {
+			continue
+		}
+		var data struct {
+			Version   int    `json:"version"`
+			Path      string `json:"path"`
+			UpdatedAt string `json:"updatedAt"`
+			Bytes     int64  `json:"bytes"`
+		}
+		if err := json.Unmarshal(entry.Data, &data); err != nil || data.Version != 1 || data.Path == "" {
+			continue
+		}
+		return Plan{Path: data.Path, UpdatedAt: data.UpdatedAt, Bytes: data.Bytes}, true
+	}
+	return Plan{}, false
 }

@@ -141,6 +141,7 @@ func (m *Model) handleEvent(event rpc.Event) (tea.Model, tea.Cmd) {
 			m.logEntries = append(m.logEntries, entry)
 			m.selection, m.hasSelection = session.ReadToolSelection(m.logEntries)
 			m.currentMode = session.ReadWorkMode(m.logEntries)
+			m.plan, m.hasPlan = session.ReadPlan(m.logEntries)
 			if isGoalLogEntry(entry) {
 				m.goal, m.hasGoal = session.ReadGoal(m.logEntries)
 				if m.overlay != nil && m.overlay.action == "goal" {
@@ -1124,6 +1125,8 @@ func (m *Model) runSlash(text string) (tea.Cmd, bool) {
 		return nil, true
 	case "/context":
 		return m.openContext(), true
+	case "/plan":
+		return m.openPlan(), true
 	case "/image":
 		return m.sendImage(argument), true
 	case "/paste":
@@ -1925,6 +1928,8 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.MessageCount = 0
 		m.hasSelection = false
 		m.currentMode = ""
+		m.plan = session.Plan{}
+		m.hasPlan = false
 		m.presetBeforePlan = ""
 		m.logEntries = nil
 		m.transcript.Add(m.welcomeBlock())
@@ -1947,6 +1952,8 @@ func (m *Model) applyResponse(msg responseMsg) (tea.Model, tea.Cmd) {
 		m.state.SessionID = ""
 		m.firstUserPrompt = ""
 		m.extensionTitle = ""
+		m.plan = session.Plan{}
+		m.hasPlan = false
 		m.presetBeforePlan = ""
 		return m, tea.Batch(m.refreshState(), m.refreshStats(), m.loadEntries(), m.syncTerminalTitle())
 

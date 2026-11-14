@@ -10,9 +10,57 @@
 // so no build step is involved.
 
 import { Type } from "typebox";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  copyFileSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 const TOOL_SELECTION_TYPE = "pie:tool-selection";
 const WORK_MODE_TYPE = "pie:work-mode";
+const PLAN_ENTRY_TYPE = "pie:plan";
+const PLAN_TOOL_NAME = "update_plan";
+const PLAN_DIR = "pie-plans";
+const PLAN_MAX_BYTES = 256 * 1024;
+const PLAN_CONTEXT_MAX_CHARS = 12_000;
+const PLAN_OUTLINE_MAX_CHARS = 4_000;
+const PLAN_STATUSES = new Set(["draft", "ready", "in-progress", "done"]);
+
+const PLAN_TEMPLATE = `# Plan
+
+Status: draft
+
+## Goal
+
+## Constraints
+
+## Steps
+
+- [ ]
+
+## Files
+
+## Verification
+
+## Risks and open questions
+`;
+
+// Tools a work mode owns. They must not be carried into another preset merely
+// because they were active in the previous one.
+const MODE_OWNED_TOOLS = new Set([PLAN_TOOL_NAME]);
 
 const ASK_USER_TOOL_NAME = "ask_user";
 // Keep this label in sync with internal/ui/ask_user.go: it is the marker the
@@ -44,11 +92,17 @@ const AUTH_NOTIFY_PREFIX = "pie-auth ";
 const activeLogins = new Map();
 
 const PLAN_GUIDELINES = [
-  "Plan mode is on: this is a read-only conversation. Explore the workspace freely, but do not modify files or run commands that change anything — the write and shell tools are blocked.",
+  "Plan mode is on: the project is read-only. Explore the workspace freely, but do not modify project files or run commands that change anything — the write and shell tools are blocked.",
+  `Write the plan with ${PLAN_TOOL_NAME}. The plan file is the deliverable and the source of truth; it lives outside the conversation, so context compaction cannot remove it.`,
   "Ask before assuming. When the request is ambiguous, a trade-off matters, or a decision changes what you would build, call ask_user with one focused question and 2-3 concrete options.",
   "Ask about intent, priorities, constraints, and choices the repository cannot answer; read the code instead of asking what it contains.",
-  "When the direction is settled, summarize briefly: the goal, the steps, the files involved, and the risks. Then wait for the user to leave Plan mode before implementing.",
+  "Before ending a planning turn, call update_plan with a self-contained plan: goal, constraints, ordered steps, files, verification, and risks. Use Status: draft while exploring, ready when the plan is complete, in-progress after the user approves, and done after verification.",
+  "If the conversation was compacted or the plan is no longer in context, read the plan file before continuing. Do not reconstruct the plan from the summary.",
 ];
+
+// Set when compaction finishes. The next request receives an explicit reminder
+// that the plan file, not the compacted transcript, is authoritative.
+let planCompacted = false;
 
 // Copied from Pie's autonomous-mode extension (webui/lib/autonomous-mode-extension.ts).
 // Keep the wording in sync with the browser client.
@@ -113,7 +167,261 @@ function readWorkMode(entries) {
 
 function activeExtensionTools(active) {
   const builtin = new Set(BUILTIN_TOOLS);
-  return active.filter((name) => !builtin.has(name));
+  return active.filter((name) => !builtin.has(name) && !MODE_OWNED_TOOLS.has(name));
+}
+
+function agentDirectory() {
+  const configured = String(process.env.PI_CODING_AGENT_DIR || "").trim();
+  let dir = configured || join(homedir(), ".pi", "agent");
+  if (dir === "~") dir = homedir();
+  else if (dir.startsWith("~/") || dir.startsWith("~\\")) dir = join(homedir(), dir.slice(2));
+  return resolve(dir);
+}
+
+function plansDirectory() {
+  return join(agentDirectory(), PLAN_DIR);
+}
+
+function ensurePlansDirectory() {
+  const dir = plansDirectory();
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const stat = lstatSync(dir);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error("pie-plans must be a real directory");
+  }
+  return dir;
+}
+
+function resolvedForContainment(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    try {
+      return join(realpathSync(dirname(path)), basename(path));
+    } catch {
+      return resolve(path);
+    }
+  }
+}
+
+function isInsidePlansDirectory(path) {
+  try {
+    const dir = resolvedForContainment(plansDirectory());
+    const target = resolvedForContainment(path);
+    const rel = relative(dir, target);
+    return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+  } catch {
+    return false;
+  }
+}
+
+function safeSessionStem(sessionId) {
+  const text = String(sessionId || "").trim();
+  if (/^[A-Za-z0-9_-]{1,128}$/.test(text)) return text;
+  return createHash("sha256").update(text || "session").digest("hex");
+}
+
+function planPathForSessionId(sessionId) {
+  return join(plansDirectory(), safeSessionStem(sessionId) + ".md");
+}
+
+function readPlanEntry(entries) {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry || entry.type !== "custom" || entry.customType !== PLAN_ENTRY_TYPE) continue;
+    const data = entry.data;
+    if (!data || typeof data !== "object" || data.version !== 1) continue;
+    if (typeof data.path !== "string" || !isInsidePlansDirectory(data.path)) continue;
+    return {
+      path: data.path,
+      updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : undefined,
+      bytes: typeof data.bytes === "number" ? data.bytes : undefined,
+    };
+  }
+  return undefined;
+}
+
+function planPathForSession(sessionManager) {
+  const entries = sessionManager.getEntries();
+  const entry = readPlanEntry(entries);
+  return entry?.path ?? planPathForSessionId(sessionManager.getSessionId());
+}
+
+function readTextCapped(path, maxBytes) {
+  const fd = openSync(path, "r");
+  try {
+    const stat = statSync(path);
+    const length = Math.min(stat.size, maxBytes);
+    const buffer = Buffer.allocUnsafe(length);
+    const read = readSync(fd, buffer, 0, length, 0);
+    return {
+      content: buffer.subarray(0, read).toString("utf8"),
+      truncated: stat.size > read,
+      bytes: stat.size,
+      updatedAt: stat.mtime.toISOString(),
+    };
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function derivePlanStatus(lines) {
+  let unchecked = 0;
+  let checked = 0;
+  for (const line of lines) {
+    if (/^\s*[-*]\s*\[\s\]\s*/.test(line)) unchecked += 1;
+    else if (/^\s*[-*]\s*\[[xX]\]\s*/.test(line)) checked += 1;
+  }
+  if (checked === 0) return "draft";
+  if (unchecked === 0) return "done";
+  return "in-progress";
+}
+
+function buildPlanOutline(lines) {
+  const picked = [];
+  let used = 0;
+  let clipped = false;
+  for (const line of lines) {
+    const trimmed = line.trimEnd();
+    const heading = /^#{1,3}\s+/.test(trimmed);
+    const openStep = /^\s*[-*]\s*\[\s\]\s*/.test(trimmed);
+    if (!heading && !openStep) continue;
+    const next = heading ? trimmed : trimmed.trim();
+    if (used + next.length + 1 > PLAN_OUTLINE_MAX_CHARS) {
+      clipped = true;
+      break;
+    }
+    picked.push(next);
+    used += next.length + 1;
+  }
+  if (clipped) picked.push("… (outline truncated; read the plan file for the rest)");
+  return picked.join("\n");
+}
+
+function parsePlanContent(content) {
+  const lines = content.split(/\r?\n/);
+  let title = "Plan";
+  let status;
+  for (const line of lines) {
+    const heading = line.match(/^#\s+(.+?)\s*$/);
+    if (heading && title === "Plan") title = heading[1].trim().slice(0, 200);
+    const match = line.match(/^status:\s*(draft|ready|in-progress|done)\b/i);
+    if (match) status = match[1].toLowerCase();
+  }
+  if (!status) status = derivePlanStatus(lines);
+  if (!PLAN_STATUSES.has(status)) status = "draft";
+  return { title, status, outline: buildPlanOutline(lines) };
+}
+
+function readPlanSnapshot(path, maxBytes = PLAN_MAX_BYTES) {
+  if (!isInsidePlansDirectory(path)) throw new Error("plan path is outside pie-plans");
+  if (lstatSync(path).isSymbolicLink()) throw new Error("plan file must not be a symbolic link");
+  const read = readTextCapped(path, maxBytes);
+  const parsed = parsePlanContent(read.content);
+  return {
+    path,
+    ...parsed,
+    content: read.content,
+    truncated: read.truncated,
+    bytes: read.bytes,
+    updatedAt: read.updatedAt,
+    revision: read.truncated ? undefined : createHash("sha256").update(read.content).digest("hex"),
+  };
+}
+
+function readPlanForSession(sessionManager, maxBytes = PLAN_MAX_BYTES) {
+  const path = planPathForSession(sessionManager);
+  if (!existsSync(path)) return undefined;
+  try {
+    return readPlanSnapshot(path, maxBytes);
+  } catch {
+    return undefined;
+  }
+}
+
+function writePlanContent(path, content) {
+  ensurePlansDirectory();
+  if (!isInsidePlansDirectory(path)) throw new Error("plan path is outside pie-plans");
+  const temp = join(
+    dirname(path),
+    `.${basename(path)}-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.tmp`,
+  );
+  try {
+    writeFileSync(temp, content, { encoding: "utf8", flag: "wx", mode: 0o600, flush: true });
+    renameSync(temp, path);
+  } catch (error) {
+    try {
+      unlinkSync(temp);
+    } catch {
+      // Leave the temp file behind when it cannot be removed.
+    }
+    throw error;
+  }
+}
+
+function planEntryData(plan) {
+  return { version: 1, path: plan.path, updatedAt: plan.updatedAt, bytes: plan.bytes };
+}
+
+function ensurePlanFile(pi, sessionManager) {
+  const expected = planPathForSessionId(sessionManager.getSessionId());
+  const entry = readPlanEntry(sessionManager.getEntries());
+  let path = entry?.path ?? expected;
+  let changed = false;
+  if (path !== expected) {
+    if (existsSync(path) && !existsSync(expected)) {
+      ensurePlansDirectory();
+      copyFileSync(path, expected);
+      chmodSync(expected, 0o600);
+      changed = true;
+    }
+    path = expected;
+  }
+  const existed = existsSync(path);
+  if (!existed) {
+    writePlanContent(path, PLAN_TEMPLATE);
+    changed = true;
+  }
+  const plan = readPlanSnapshot(path);
+  if (changed || !entry || entry.path !== path) {
+    pi.appendEntry(PLAN_ENTRY_TYPE, planEntryData(plan));
+  }
+  return plan;
+}
+
+function renderPlanSection(plan) {
+  return [
+    `Path: ${plan.path}`,
+    `Title: ${plan.title}`,
+    `Status: ${plan.status}`,
+    `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable for an oversized plan"}`,
+    "The plan file is authoritative and survives context compaction.",
+  ].join("\n");
+}
+
+function renderPlanContext(plan, compacted) {
+  const lines = [
+    "[pie-plan-context, not a user request]",
+    `Authoritative plan file: ${plan.path}`,
+    `Title: ${plan.title}`,
+    `Status: ${plan.status}`,
+    `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable"}`,
+    "The plan file is outside the conversation and survives context compaction.",
+  ];
+  if (compacted) {
+    lines.push(
+      "The conversation was compacted. Do not rely on the summary for plan details; the plan file below is authoritative.",
+    );
+  }
+  if (!plan.truncated && plan.content.length <= PLAN_CONTEXT_MAX_CHARS) {
+    lines.push("", plan.content);
+  } else {
+    const details = plan.outline.trim()
+      ? plan.outline
+      : plan.content.slice(0, PLAN_CONTEXT_MAX_CHARS);
+    lines.push("", "Plan outline (read the full file before acting):", details);
+  }
+  return lines.join("\n");
 }
 
 function authNotify(ctx, providerId, payload) {
@@ -1109,22 +1417,119 @@ export default function (pi) {
     },
   });
 
+  pi.registerTool({
+    name: PLAN_TOOL_NAME,
+    label: "Update plan",
+    description:
+      "Write the session's durable Markdown plan file. The full content replaces the current file. The plan file lives outside the conversation and survives context compaction.",
+    promptSnippet: "Write the session's durable plan file",
+    promptGuidelines: [
+      "Write a self-contained plan: goal, constraints, ordered steps, files, verification, and risks. Use Status: draft while exploring, ready when complete, in-progress after approval, and done after verification.",
+      "Pass baseRevision from the injected plan context when replacing an existing plan; the tool refuses a write if the file changed first.",
+    ],
+    exposure: "direct",
+    defaultActive: false,
+    // A plan is one document; concurrent replacements would interleave.
+    executionMode: "sequential",
+    annotations: {
+      readOnlyHint: false,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+    parameters: Type.Object({
+      content: Type.String({
+        description: "The full Markdown plan. This replaces the current plan file.",
+      }),
+      baseRevision: Type.Optional(
+        Type.String({
+          description:
+            "The revision shown in the injected plan context. If it no longer matches, the write is refused.",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const content = String(params?.content ?? "");
+      if (!content.trim()) throw new Error("update_plan needs non-empty content");
+      if (Buffer.byteLength(content, "utf8") > PLAN_MAX_BYTES) {
+        throw new Error(`update_plan content exceeds ${PLAN_MAX_BYTES} bytes`);
+      }
+      const path = planPathForSessionId(ctx.sessionManager.getSessionId());
+      const existing = existsSync(path) ? readPlanSnapshot(path) : undefined;
+      if (params?.baseRevision) {
+        if (!existing || existing.revision !== params.baseRevision) {
+          throw new Error(
+            "The plan file changed on disk. Read it again and retry with the current revision.",
+          );
+        }
+      }
+      writePlanContent(path, content);
+      const plan = readPlanSnapshot(path);
+      pi.appendEntry(PLAN_ENTRY_TYPE, planEntryData(plan));
+      const text = [
+        `Plan written to ${plan.path}.`,
+        `Title: ${plan.title}`,
+        `Status: ${plan.status}`,
+        `Revision: ${plan.revision ? plan.revision.slice(0, 12) : "unavailable"}`,
+        `Bytes: ${plan.bytes}`,
+        "This file is authoritative and survives context compaction. Pass baseRevision when replacing it again.",
+        "",
+        "Outline:",
+        plan.outline,
+      ].join("\n");
+      return {
+        content: [{ type: "text", text }],
+        details: {
+          path: plan.path,
+          title: plan.title,
+          status: plan.status,
+          revision: plan.revision,
+          bytes: plan.bytes,
+          outline: plan.outline,
+          truncated: plan.truncated,
+        },
+      };
+    },
+  });
+
   // Restore a pinned tool set when a session is resumed, the way pie's server
   // rebuilds the session from its own entries.
   pi.on("session_start", async (_event, ctx) => {
-    const selection = readToolSelection(ctx.sessionManager.getEntries());
+    const entries = ctx.sessionManager.getEntries();
+    const selection = readToolSelection(entries);
     if (selection) applyToolSelection(pi, selection);
+    if (readWorkMode(entries) === "plan" || readPlanEntry(entries)) {
+      try {
+        ensurePlanFile(pi, ctx.sessionManager);
+      } catch (error) {
+        console.warn("[pie] could not prepare the plan file:", error);
+      }
+    }
   });
 
   pi.on("before_agent_start", async (event, ctx) => {
-    const mode = readWorkMode(ctx.sessionManager.getEntries());
-    if (mode !== "plan" && mode !== "autonomous") return;
+    const entries = ctx.sessionManager.getEntries();
+    const mode = readWorkMode(entries);
     const options = event.systemPromptOptions;
     if (!options) return;
-    if (Array.isArray(options.promptGuidelines)) {
-      options.promptGuidelines.push(...(mode === "plan" ? PLAN_GUIDELINES : AUTONOMOUS_GUIDELINES));
+
+    let plan;
+    if (mode === "plan" || readPlanEntry(entries)) {
+      try {
+        plan = ensurePlanFile(pi, ctx.sessionManager);
+      } catch (error) {
+        console.warn("[pie] could not read the plan file:", error);
+      }
     }
-    if (mode === "autonomous" && Array.isArray(options.selectedTools)) {
+
+    if (mode === "plan") {
+      options.promptGuidelines.push(...PLAN_GUIDELINES);
+      if (!options.selectedTools.includes(PLAN_TOOL_NAME)) {
+        options.selectedTools.push(PLAN_TOOL_NAME);
+      }
+    }
+    if (mode === "autonomous") {
+      options.promptGuidelines.push(...AUTONOMOUS_GUIDELINES);
       // Pie starts an autonomous session without the question extension. The
       // bridge registers ask_user once for every session, so leave it out of
       // this run's declared tools instead of reloading pi; the tool_call guard
@@ -1132,6 +1537,32 @@ export default function (pi) {
       // untouched, so leaving the mode restores the tool.
       options.selectedTools = options.selectedTools.filter((name) => name !== ASK_USER_TOOL_NAME);
     }
+    if (plan) {
+      options.sections["pie-plan"] = renderPlanSection(plan);
+    }
+  });
+
+  // Request-local plan context. It is not a session entry, so compaction cannot
+  // remove it; every request after a compaction reads the file again.
+  pi.on("context", async (event, ctx) => {
+    const plan = readPlanForSession(ctx.sessionManager);
+    if (!plan) return;
+    const compacted = planCompacted;
+    planCompacted = false;
+    event.messages.push({
+      role: "custom",
+      customType: "pie-plan-context",
+      content: [{ type: "text", text: renderPlanContext(plan, compacted) }],
+      display: false,
+      timestamp: Date.now(),
+    });
+  });
+
+  pi.on("session_before_compact", async () => {
+    planCompacted = true;
+  });
+  pi.on("session_compact", async () => {
+    planCompacted = true;
   });
 
   pi.on("tool_call", async (event, ctx) => {
@@ -1149,9 +1580,9 @@ export default function (pi) {
     return {
       block: true,
       reason:
-        'Plan mode is read-only, so "' +
+        'Plan mode is read-only for the project, so "' +
         event.toolName +
-        '" is blocked. Read the workspace and ask the user with ask_user instead; they leave Plan mode when they want changes made.',
+        '" is blocked. Read the workspace and ask the user with ask_user; record the plan with update_plan. They leave Plan mode when they want changes made.',
     };
   });
 
@@ -1182,10 +1613,17 @@ export default function (pi) {
 
   pi.registerCommand("pie-mode", {
     description: "Set the work mode (pie internal)",
-    handler: async (args) => {
+    handler: async (args, ctx) => {
       const text = String(args || "").trim();
       const mode = text === "plan" || text === "autonomous" || text === "orchestrator" ? text : null;
       pi.appendEntry(WORK_MODE_TYPE, { version: 1, mode });
+      if (mode === "plan") {
+        try {
+          ensurePlanFile(pi, ctx.sessionManager);
+        } catch (error) {
+          ctx.ui.notify("pie-mode: could not prepare the plan file: " + String(error), "error");
+        }
+      }
     },
   });
 
@@ -1338,6 +1776,7 @@ export default function (pi) {
       }
       const fs = await import("node:fs");
       const workMode = readWorkMode(ctx.sessionManager.getEntries()) ?? null;
+      const plan = readPlanForSession(ctx.sessionManager, 64 * 1024);
       const active = new Set(pi.getActiveTools());
       // Autonomous runs do not declare ask_user (see before_agent_start), so the
       // snapshot reports what the model can actually call.
@@ -1349,6 +1788,16 @@ export default function (pi) {
         systemPrompt: ctx.getSystemPrompt(),
         workMode,
         toolSelection: readToolSelection(ctx.sessionManager.getEntries()) ?? null,
+        plan: plan
+          ? {
+              path: plan.path,
+              title: plan.title,
+              status: plan.status,
+              revision: plan.revision,
+              bytes: plan.bytes,
+              updatedAt: plan.updatedAt,
+            }
+          : null,
       };
       fs.writeFileSync(path, JSON.stringify(snapshot, null, 2), { mode: 0o600 });
     },

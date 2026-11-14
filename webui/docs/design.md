@@ -382,19 +382,23 @@ The composer footer keeps the controls that shape the next message: attach, the 
 level and the tool preset. Compaction acts on the session instead of one prompt, so it does not earn
 a permanent slot beside those knobs.
 
-The entry is an unmarked opener that reads **More** and opens one small dialog with one card,
-**Compact**, in the shape the sidebar's **New** dialog uses: the card is the only strong element,
-and the chrome around it stays flat. Compaction is one action, so its card acts at once and closes
-the dialog: it states the session's context size (`64% of 200k`) and the last compaction's result,
-then reports in the run status row above the composer. The card is disabled while a run holds the
-session, and reads **Stop compaction** while a compaction is running. On phones the footer's own
-expander is named **Controls**, so it never reads as this entry.
+The entry is an unmarked opener that reads **More** and opens one small dialog with cards in the
+shape the sidebar's **New** dialog uses: the card is the only strong element, and the chrome around
+it stays flat. Compaction is one action, so its card acts at once and closes the dialog: it states
+the session's context size (`64% of 200k`) and the last compaction's result, then reports in the run
+status row above the composer. The card is disabled while a run holds the session, and reads **Stop
+compaction** while a compaction is running. On phones the footer's own expander is named
+**Controls**, so it never reads as this entry.
+
+The same dialog holds **Plan mode**. Its card enters or leaves the mode, remembers the previous
+preset, and is disabled while a run holds the session. Once a plan file exists, a second card opens
+the read-only plan dialog; the plan lives in the agent directory and survives context compaction.
 
 ## Autonomous goals
 
 The goal is written and managed in a dialog, never in an always-visible switch beside the model
-picker. The composer's one opener — the dots entry that also holds compaction — opens on two cards,
-**Compact** and **Goal**; the goal card opens the goal's own page. A session whose package registers
+picker. The composer's one opener — the dots entry that also holds compaction — opens on cards for
+**Plan mode**, **Compact**, **Goal**, and the plan file when one exists; the goal card opens the goal's own page. A session whose package registers
 no goal command has no goal card, and a session with nothing to compact opens the dialog straight on
 the goal. A new session offers the goal card before its first message too: the objective written
 there becomes the conversation's first work, so the person need not send a message just to make the

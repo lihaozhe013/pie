@@ -29,7 +29,8 @@ The boundary is the same for both clients: a feature may change how Pi's work is
 scheduled, and driven; it may not change how Pi executes it. A subagent runtime, a second agent
 loop, a parallel tool or session protocol, or any other new execution model is out of scope. The
 queue and the Orchestrator preset stay inside it: they schedule ordinary Pi SDK sessions and add one
-`task_manager` tool, not an agent runtime.
+`task_manager` tool, not an agent runtime. Plan mode likewise adds one `update_plan` tool and one
+durable plan file, not a second execution model.
 
 ## Scope
 
@@ -86,6 +87,7 @@ All project documentation is maintained in English, without translated copies.
 | [Desktop shell](desktop.md)         | Tauri 2 window and desktop packaging        |
 | [Tasks](tasks.md)                   | Per-project task queues, execution boundary |
 | [Orchestrator](orchestrator.md)     | The Orchestrator preset and its queue tool  |
+| [Plan mode](../../docs/plan-mode.md) | Durable plan file, tool, and injection      |
 | [Packaging](../packaging/README.md) | Local portable builds                       |
 | [Repository CI](../../docs/ci.md)   | Workflow and release artifacts              |
 

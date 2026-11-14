@@ -54,6 +54,7 @@ import { SelectorRow } from './SelectorRow';
 import { ModelSelector, type ModelSelectorOption } from './ModelSelector';
 import { ComposerHub } from './ComposerHub';
 import type { GoalAction, GoalFacts } from '@/lib/goal-driver';
+import type { PlanFacts } from '@/lib/plan-file';
 
 export { filterModelOptions } from './ModelSelector';
 
@@ -125,6 +126,14 @@ interface Props {
   goal?: GoalFacts;
   /** Sends a goal command; without it the hub offers no goal entry. */
   onGoalCommand?: (action: GoalAction, objective?: string) => void;
+  /** True while the durable Plan mode is active. */
+  planMode?: boolean;
+  /** The session's plan file, when one exists. */
+  plan?: PlanFacts | null;
+  /** Enters or leaves Plan mode. */
+  onPlanModeToggle?: () => void;
+  /** Opens the read-only plan viewer. */
+  onViewPlan?: () => void;
   /** Context usage of this session, read beside the compact action. */
   contextUsage?: { percent: number | null; contextWindow: number; tokens: number | null } | null;
 }
@@ -789,6 +798,10 @@ export const ChatInput = memo(
       onAttachFiles,
       goal,
       onGoalCommand,
+      planMode,
+      plan,
+      onPlanModeToggle,
+      onViewPlan,
       compact = false
     }: Props,
     ref
@@ -3232,7 +3245,7 @@ export const ChatInput = memo(
                     </div>
                   )}
 
-                  {(onCompact || onGoalCommand) && (
+                  {(onCompact || onGoalCommand || onPlanModeToggle) && (
                     <ComposerHub
                       goal={goal}
                       running={isStreaming}
@@ -3242,6 +3255,10 @@ export const ChatInput = memo(
                       onAbortCompaction={onAbortCompaction}
                       isCompacting={isCompacting}
                       compactResult={compactResult}
+                      planMode={planMode}
+                      plan={plan}
+                      onPlanModeToggle={onPlanModeToggle}
+                      onViewPlan={onViewPlan}
                       contextUsage={contextUsage}
                     />
                   )}

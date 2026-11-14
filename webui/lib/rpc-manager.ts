@@ -81,6 +81,7 @@ import {
 } from './goal-driver';
 import { createPieBuiltinExtensions } from './builtin-extensions';
 import { createAppendSystemPromptExtension } from './append-system-prompt-extension';
+import { ensurePlanFile, PLAN_ENTRY_TYPE, PLAN_TOOL_NAME } from './plan-file';
 import { createTaskManagerExtension } from './task-manager-extension';
 import { goalExtensionPaths } from './goal-package';
 import type { McpHost } from './mcp-host';
@@ -344,6 +345,10 @@ const CUSTOM_UI_KEYBINDINGS = new TuiKeybindingsManager(TUI_KEYBINDINGS);
 
 const SESSION_TOOL_NAMES = new Set<string>(['codemode', 'tool_search']);
 
+// Tools a work mode owns. They must not be carried into another preset merely
+// because they were active in the previous one.
+const MODE_OWNED_TOOL_NAMES = new Set<string>([PLAN_TOOL_NAME]);
+
 /**
  * The active tools for a pinned selection. The coding names choose the shell
  * and the read/edit set; extension names in `requested` are honored when they
@@ -376,11 +381,26 @@ export function resolveActiveToolNames(
     extensionTools === 'all'
       ? carry.filter((name) => {
           const tool = registered.get(name);
-          return tool !== undefined && !codingToolNames.has(name) && tool.exposure !== 'hidden';
+          return (
+            tool !== undefined &&
+            !codingToolNames.has(name) &&
+            !MODE_OWNED_TOOL_NAMES.has(name) &&
+            tool.exposure !== 'hidden'
+          );
         })
       : [];
 
   return [...new Set([...selectedToolNames, ...requestedExtensionToolNames, ...carriedToolNames])];
+}
+
+/** Create the durable plan template when a session enters Plan mode. */
+function ensureSessionPlanFile(sessionManager: SessionManager): void {
+  ensurePlanFile({
+    agentDir: getAgentDir(),
+    sessionId: sessionManager.getSessionId(),
+    entries: sessionManager.getEntries() as unknown as SessionEntry[],
+    appendEntry: (data) => sessionManager.appendCustomEntry(PLAN_ENTRY_TYPE, data)
+  });
 }
 
 // ============================================================================
@@ -1599,11 +1619,19 @@ export class AgentSessionWrapper {
           // Only an explicit `mode` changes it, so a client that sends tools alone keeps a
           // stored mode. `null` clears it.
           if ('mode' in command) {
+            const mode = validateWorkMode(command.mode);
             syncWorkMode(
               this.inner.sessionManager,
               this.inner.sessionManager.getEntries() as unknown as SessionEntry[],
-              validateWorkMode(command.mode)
+              mode
             );
+            if (mode === 'plan') {
+              try {
+                ensureSessionPlanFile(this.inner.sessionManager);
+              } catch (error) {
+                console.warn('[pie] could not prepare the plan file:', error);
+              }
+            }
           }
           return null;
         }
@@ -2707,6 +2735,13 @@ export async function setRpcSessionTools(
       existing.inner.sessionManager.getEntries() as unknown as SessionEntry[],
       workMode
     );
+    if (workMode === 'plan') {
+      try {
+        ensureSessionPlanFile(existing.inner.sessionManager);
+      } catch (error) {
+        console.warn('[pie] could not prepare the plan file:', error);
+      }
+    }
   }
   invalidateSessionListCache();
 
@@ -2930,6 +2965,13 @@ export async function startRpcSession(
   }
   const activeToolNames = selectedToolNames;
   const workMode = readWorkMode(sessionManager.getEntries() as unknown as SessionEntry[]);
+  if (workMode === 'plan') {
+    try {
+      ensureSessionPlanFile(sessionManager);
+    } catch (error) {
+      console.warn('[pie] could not prepare the plan file:', error);
+    }
+  }
   const orchestratorMode = workMode === 'orchestrator';
   // Autonomous chat is not allowed to ask, so it starts without the tool rather than
   // registering one that the mode extension would only reject at call time.

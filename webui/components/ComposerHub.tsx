@@ -5,6 +5,7 @@ import { useI18n } from '@/hooks/useI18n';
 import { compactSummaryText } from '@/lib/compact-summary';
 import { formatCompactCount } from '@/lib/session-stats-format';
 import type { GoalAction, GoalFacts } from '@/lib/goal-driver';
+import type { PlanFacts } from '@/lib/plan-file';
 import { GoalSection } from './GoalSection';
 
 /** What the composer can say about the session's context window. */
@@ -36,6 +37,10 @@ export function ComposerHub({
   onAbortCompaction,
   isCompacting,
   compactResult,
+  planMode,
+  plan,
+  onPlanModeToggle,
+  onViewPlan,
   contextUsage
 }: {
   goal?: GoalFacts;
@@ -49,6 +54,14 @@ export function ComposerHub({
   onAbortCompaction?: () => void;
   isCompacting?: boolean;
   compactResult?: CompactResultInfo | null;
+  /** True while the durable Plan mode is active. */
+  planMode?: boolean;
+  /** The session's plan file, when one exists. */
+  plan?: PlanFacts | null;
+  /** Enters or leaves Plan mode. */
+  onPlanModeToggle?: () => void;
+  /** Opens the read-only plan viewer. */
+  onViewPlan?: () => void;
   contextUsage?: ContextUsageSummary | null;
 }) {
   const { t } = useI18n();
@@ -274,6 +287,83 @@ export function ComposerHub({
 
                 <div className="composer-hub-body">
                   <div className="composer-hub-options">
+                    {onPlanModeToggle && (
+                      <button
+                        type="button"
+                        className="composer-hub-choice"
+                        data-state={planMode ? 'active' : undefined}
+                        disabled={running}
+                        aria-pressed={planMode === true}
+                        aria-label={planMode ? t('chat.leavePlanMode') : t('chat.startPlanning')}
+                        onClick={() => {
+                          onPlanModeToggle();
+                          close();
+                        }}
+                      >
+                        <span className="composer-hub-choice-icon" aria-hidden="true">
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M8 6h12M8 12h12M8 18h12" />
+                            <path d="M4 6h.01M4 12h.01M4 18h.01" />
+                          </svg>
+                        </span>
+                        <span className="composer-hub-choice-title">
+                          {planMode ? t('chat.planModeOn') : t('chat.planMode')}
+                        </span>
+                        <span className="composer-hub-choice-description">
+                          {planMode
+                            ? plan?.title || t('chat.planNotYet')
+                            : t('chat.planModeDescription')}
+                        </span>
+                        <span className="composer-hub-choice-meta">
+                          {planMode ? t('chat.leavePlanMode') : t('chat.startPlanning')}
+                        </span>
+                      </button>
+                    )}
+
+                    {plan?.exists && onViewPlan && (
+                      <button
+                        type="button"
+                        className="composer-hub-choice"
+                        onClick={() => {
+                          onViewPlan();
+                          close();
+                        }}
+                      >
+                        <span className="composer-hub-choice-icon" aria-hidden="true">
+                          <svg
+                            width="20"
+                            height="20"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="1.9"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <path d="M14 2v6h6M8 13h8M8 17h8" />
+                          </svg>
+                        </span>
+                        <span className="composer-hub-choice-title">{t('chat.planFile')}</span>
+                        <span className="composer-hub-choice-description">
+                          {plan.title || t('chat.planFileDescription')}
+                        </span>
+                        <span className="composer-hub-choice-meta">
+                          {plan.status}
+                          <span className="composer-hub-choice-note">{t('chat.viewPlan')}</span>
+                        </span>
+                      </button>
+                    )}
+
                     {onCompact && (
                       <button
                         ref={compactRef}

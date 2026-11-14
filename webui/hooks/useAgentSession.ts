@@ -31,6 +31,7 @@ import { clearDraft, getDraft, rekeyDraft, restoreDraftSubmission } from '@/lib/
 import { getPreferredToolPreset, setPreferredToolPreset } from '@/lib/tool-preset-preference';
 import {
   CONFIGURED_TOOL_PRESET,
+  PLAN_TOOL_PRESET,
   getExtensionToolsPolicyForSelection,
   getPresetForSession,
   getToolNamesForSelection,
@@ -40,6 +41,9 @@ import {
   type ToolPresetSelection
 } from '@/lib/tool-presets';
 import type { CustomToolPreset } from '@/lib/custom-tool-presets-shared';
+import type { PlanFacts } from '@/lib/plan-file';
+
+const UPDATE_PLAN_TOOL = 'update_plan';
 import type { WorkMode } from '@/lib/work-mode';
 import {
   GOAL_STATUS_KEY,
@@ -98,6 +102,8 @@ export interface SessionData {
   mode?: WorkMode;
   /** The goal an installed goal package last wrote on this branch. */
   goal?: GoalFacts;
+  /** The durable plan file, when this session has one. */
+  plan?: PlanFacts | null;
   /** Opaque freshness token for the session view cache (summary tree reads). */
   snapshotRevision?: string | null;
   /** "summary" when `tree` carries the body-free navigation format. */
@@ -529,6 +535,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   // The saved goal is what a session shows before its runtime starts. Once a status
   // arrives, the live bridge (goal or no goal, package or no package) is authoritative.
   const [savedGoal, setSavedGoal] = useState<GoalFacts | undefined>(undefined);
+  const [sessionPlan, setSessionPlan] = useState<PlanFacts | null>(null);
+  const presetBeforePlanRef = useRef<ToolPresetSelection | null>(null);
   const [extensionWidgets, setExtensionWidgets] = useState<ExtensionWidgetItem[]>([]);
   const [queuedMessages, setQueuedMessages] = useState<QueuedMessages>({
     steering: [],
@@ -979,6 +987,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           // Tool-preset state is independent of the view cache: it must be applied
           // on every read, cached window or not (#700).
           setSavedGoal(d.goal);
+          setSessionPlan(d.plan ?? null);
           sessionToolsPinnedRef.current = d.toolNames !== undefined;
           setToolPresetState(
             getPresetForSession(d.toolNames, d.mode, customToolPresetsRef.current, d.extensionTools)
@@ -1160,6 +1169,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     },
     [onSystemToolsChange, setToolPresetState]
   );
+
+  const loadPlanFacts = useCallback(async (sid: string) => {
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/plan`);
+      if (!res.ok) {
+        if (sessionIdRef.current === sid) setSessionPlan(null);
+        return null;
+      }
+      const body = (await res.json()) as { plan?: PlanFacts | null };
+      if (!sessionHookMountedRef.current || sessionIdRef.current !== sid) return null;
+      setSessionPlan(body.plan ?? null);
+      return body.plan ?? null;
+    } catch (e) {
+      console.error('Failed to load plan facts:', e);
+      return null;
+    }
+  }, []);
+
+  useEffect(() => {
+    setSessionPlan(null);
+  }, [session?.id]);
 
   const promoteNewSession = useCallback(
     (messageCount = 0, firstMessage = '(no messages)') => {
@@ -2130,6 +2160,9 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           if (isNestedToolExecutionEvent(event)) break;
           const id = event.toolCallId as string;
           onToolEnd?.(event.toolName as string);
+          if (event.toolName === UPDATE_PLAN_TOOL && sessionIdRef.current) {
+            void loadPlanFacts(sessionIdRef.current);
+          }
           setActiveToolResults((prev) => {
             if (!prev.has(id)) return prev;
             const next = new Map(prev);
@@ -2199,6 +2232,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       cancelEventStreamGrace,
       dispatch,
       handleExtensionUiRequest,
+      loadPlanFacts,
       loadSession,
       notifyPromptStage,
       onAgentEnd,
@@ -3093,6 +3127,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const handleToolPresetChange = useCallback(
     async (preset: ToolPresetSelection) => {
+      if (preset === PLAN_TOOL_PRESET) {
+        if (toolPreset !== PLAN_TOOL_PRESET) presetBeforePlanRef.current = toolPreset;
+      } else {
+        presetBeforePlanRef.current = null;
+      }
       const toolNames = getToolNamesForSelection(preset, customToolPresetsRef.current);
       const extensionTools = getExtensionToolsPolicyForSelection(
         preset,
@@ -3137,6 +3176,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           sendAgentCommand<AgentStateResponse>(activeSessionId, { type: 'get_state' }),
           loadTools(activeSessionId)
         ]);
+        void loadPlanFacts(activeSessionId);
         if (sessionHookMountedRef.current && sessionIdRef.current === activeSessionId) {
           setSystemPrompt(state.systemPrompt ?? '');
           syncLiveModel(state);
@@ -3149,12 +3189,27 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       cancelEventStreamGrace,
       clearSlashCommands,
       closeEvents,
+      loadPlanFacts,
       loadTools,
       maintainEventsConnected,
       setToolPresetState,
-      syncLiveModel
+      syncLiveModel,
+      toolPreset
     ]
   );
+
+  const togglePlanMode = useCallback(() => {
+    if (toolPreset === PLAN_TOOL_PRESET) {
+      const previous = presetBeforePlanRef.current;
+      const selection = previous && previous !== PLAN_TOOL_PRESET ? previous : getPreferredToolPreset();
+      void handleToolPresetChange(
+        selection === PLAN_TOOL_PRESET ? CONFIGURED_TOOL_PRESET : selection
+      );
+      return;
+    }
+    presetBeforePlanRef.current = toolPreset;
+    void handleToolPresetChange(PLAN_TOOL_PRESET);
+  }, [handleToolPresetChange, toolPreset]);
 
   const scrollToMessage = useCallback((element: HTMLElement, viewportOffset = 16) => {
     const container = scrollContainerRef.current;
@@ -3608,6 +3663,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     goal,
     goalAvailable: goalBridge.available,
     goalAction,
+    sessionPlan,
     respondToExtensionUi,
     sendExtensionCustomInput,
     isAutoModelSelection: isNew && newSessionModel === null,
@@ -3645,6 +3701,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     addNotice,
     setNoticePaused: setPausedNoticeId,
     handleToolPresetChange,
+    togglePlanMode,
+    loadPlanFacts,
     handleThinkingLevelChange,
     handleSetDefaultModel,
     handleSetDefaultThinkingLevel,
